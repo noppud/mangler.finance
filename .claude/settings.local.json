@@ -7,7 +7,9 @@
       "Bash(docker logs:*)",
       "Bash(docker stop:*)",
       "Bash(docker rm:*)",
-      "Bash(docker rmi:*)"
+      "Bash(docker rmi:*)",
+      "Bash(git add:*)",
+      "Bash(git commit:*)"
     ],
     "deny": [],
     "ask": []
