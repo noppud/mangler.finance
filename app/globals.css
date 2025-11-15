@@ -1,0 +1,60 @@
+@import "tailwindcss";
+
+:root {
+  --background: #f3f4f6;
+  --foreground: #020617;
+  --surface: rgba(255, 255, 255, 0.92);
+  --surface-muted: #f9fafb;
+  --border-subtle: #e5e7eb;
+}
+
+@theme inline {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --font-sans: var(--font-geist-sans);
+  --font-mono: var(--font-geist-mono);
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --background: #020617;
+    --foreground: #e5e7eb;
+    --surface: rgba(15, 23, 42, 0.92);
+    --surface-muted: #020617;
+    --border-subtle: #1f2937;
+  }
+
+  body {
+    background:
+      radial-gradient(circle at top left, #020617 0, transparent 55%),
+      radial-gradient(circle at bottom right, #020617 0, transparent 55%),
+      #020617;
+  }
+}
+
+body {
+  min-height: 100vh;
+  background:
+    radial-gradient(circle at top left, #e0f2ff 0, transparent 55%),
+    radial-gradient(circle at bottom right, #e5e7ff 0, transparent 55%),
+    var(--background);
+  color: var(--foreground);
+  font-family: var(--font-geist-sans), system-ui, -apple-system,
+    BlinkMacSystemFont, "SF Pro Text", "SF Pro Display", sans-serif;
+}
+
+.card-surface {
+  background-color: var(--surface);
+  border-color: var(--border-subtle);
+}
+
+.card-muted {
+  background-color: var(--surface-muted);
+  border-color: var(--border-subtle);
+}
+
+.input-surface {
+  background-color: color-mix(in srgb, var(--surface) 85%, transparent);
+  border-color: var(--border-subtle);
+  color: var(--foreground);
+}
