@@ -29,8 +29,8 @@ export class SheetsClient {
       rowCount: sheet.properties?.gridProperties?.rowCount || 0,
       columnCount: sheet.properties?.gridProperties?.columnCount || 0,
       gridProperties: {
-        frozenRowCount: sheet.properties?.gridProperties?.frozenRowCount,
-        frozenColumnCount: sheet.properties?.gridProperties?.frozenColumnCount,
+        frozenRowCount: sheet.properties?.gridProperties?.frozenRowCount || undefined,
+        frozenColumnCount: sheet.properties?.gridProperties?.frozenColumnCount || undefined,
       },
     }));
 
@@ -85,9 +85,9 @@ export class SheetsClient {
     const cellValues: CellValue[][] = rowData.map(row => {
       const cells = row.values || [];
       return cells.map(cell => {
-        const formula = cell.userEnteredValue?.formulaValue;
+        const formula = cell.userEnteredValue?.formulaValue || undefined;
         const value = cell.effectiveValue;
-        const formattedValue = cell.formattedValue;
+        const formattedValue = cell.formattedValue || undefined;
 
         return {
           value: this.extractCellValue(value),

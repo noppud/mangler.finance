@@ -9,9 +9,14 @@ import {
 } from '@/types/agents';
 import { PROMPTS } from '../llm/prompts';
 
+type SheetsCreatorClient = Pick<
+  SheetsClient,
+  'createSpreadsheet' | 'writeRange' | 'getSpreadsheetMetadata' | 'formatRange' | 'addSheet'
+>;
+
 export class SheetCreator {
   constructor(
-    private sheetsClient: SheetsClient,
+    private sheetsClient: SheetsCreatorClient,
     private llmClient: LLMClient
   ) {}
 
