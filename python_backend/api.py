@@ -1091,12 +1091,17 @@ async def restore_colors(request: RestoreRequest) -> Dict[str, Any]:
                 "count": 0,
             }
 
+        # FILTER snapshot rows to only requested cells if cell_locations provided
         if expected_cells is not None:
             actual_cells = {row["cell"] for row in snapshot_rows if "cell" in row}
             missing = expected_cells - actual_cells
             if missing:
                 logger.warning(f"[RESTORE] Snapshot missing {len(missing)} cell(s): {sorted(list(missing)[:5])}")
-                # Don't fail, just restore what we have
+
+            # CRITICAL: Filter to only restore the requested cells
+            original_count = len(snapshot_rows)
+            snapshot_rows = [row for row in snapshot_rows if row.get("cell") in expected_cells]
+            logger.info(f"[RESTORE] Filtered from {original_count} to {len(snapshot_rows)} cell(s) based on cell_locations")
 
         # SKIP INVALID CELLS INSTEAD OF FAILING
         requests: List[Dict[str, Any]] = []
