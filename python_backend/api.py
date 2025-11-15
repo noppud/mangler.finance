@@ -137,55 +137,98 @@ async def logging_middleware(request: Request, call_next):
     """
     Middleware to log all HTTP requests and responses.
     Adds request_id for tracing and logs timing information.
+    Robust error handling to prevent middleware crashes.
     """
     # Generate unique request ID for tracing
     request_id = str(uuid.uuid4())[:8]
     start_time = time.time()
 
-    # Log incoming request
-    logger.info(
-        f"→ {request.method} {request.url.path}",
-        extra={
-            "request_id": request_id,
-            "method": request.method,
-            "endpoint": request.url.path,
-            "query_params": dict(request.query_params),
-            "client": request.client.host if request.client else None,
-        }
-    )
+    # Safely extract request info
+    try:
+        method = str(request.method) if request.method else "UNKNOWN"
+        path = str(request.url.path) if request.url and request.url.path else "/unknown"
+        query_params = dict(request.query_params) if request.query_params else {}
+        client_host = request.client.host if request.client else None
+    except Exception:
+        method = "UNKNOWN"
+        path = "/unknown"
+        query_params = {}
+        client_host = None
+
+    # Log incoming request (with fallback)
+    try:
+        logger.info(
+            f"→ {method} {path}",
+            extra={
+                "request_id": request_id,
+                "method": method,
+                "endpoint": path,
+                "query_params": query_params,
+                "client": client_host,
+            }
+        )
+    except Exception:
+        # Fallback: simple log without extra fields
+        try:
+            logger.info(f"→ {method} {path}")
+        except Exception:
+            pass  # Give up silently to prevent middleware crash
 
     # Process request and handle errors
     try:
         response = await call_next(request)
         duration_ms = int((time.time() - start_time) * 1000)
 
-        # Log response
-        log_level = logger.info if response.status_code < 400 else logger.error
-        log_level(
-            f"← {request.method} {request.url.path} - {response.status_code} ({duration_ms}ms)",
-            extra={
-                "request_id": request_id,
-                "method": request.method,
-                "endpoint": request.url.path,
-                "status_code": response.status_code,
-                "duration_ms": duration_ms,
-            }
-        )
+        # Safely get status code
+        try:
+            status_code = int(response.status_code) if hasattr(response, 'status_code') else 200
+        except Exception:
+            status_code = 200
+
+        # Log response (with fallback)
+        try:
+            log_level = logger.info if status_code < 400 else logger.error
+            log_level(
+                f"← {method} {path} - {status_code} ({duration_ms}ms)",
+                extra={
+                    "request_id": request_id,
+                    "method": method,
+                    "endpoint": path,
+                    "status_code": status_code,
+                    "duration_ms": duration_ms,
+                }
+            )
+        except Exception:
+            # Fallback: simple log without extra fields
+            try:
+                logger.info(f"← {method} {path} - {status_code} ({duration_ms}ms)")
+            except Exception:
+                pass  # Give up silently
 
         return response
 
     except Exception as exc:
         duration_ms = int((time.time() - start_time) * 1000)
-        logger.error(
-            f"✗ {request.method} {request.url.path} - Exception ({duration_ms}ms)",
-            exc_info=True,
-            extra={
-                "request_id": request_id,
-                "method": request.method,
-                "endpoint": request.url.path,
-                "duration_ms": duration_ms,
-            }
-        )
+
+        # Log error (with fallback)
+        try:
+            logger.error(
+                f"✗ {method} {path} - Exception ({duration_ms}ms)",
+                exc_info=True,
+                extra={
+                    "request_id": request_id,
+                    "method": method,
+                    "endpoint": path,
+                    "duration_ms": duration_ms,
+                }
+            )
+        except Exception:
+            # Fallback: simple error log
+            try:
+                logger.error(f"✗ {method} {path} - Exception", exc_info=True)
+            except Exception:
+                pass  # Give up silently
+
         # Re-raise to let FastAPI handle it
         raise
 
@@ -317,32 +360,104 @@ def _column_to_index(label: str) -> int:
 
 
 def _parse_cell(cell: str) -> tuple[int, int]:
-    """Parse cell reference into row and column indices."""
+    """Parse cell reference into row and column indices.
+
+    Supports:
+    - Standard cells: "A1" -> (0, 0)
+    - Row-only: "2" -> (1, 0)
+    - Column-only: "A" -> (0, 0)
+    """
+    # Try standard cell format first (e.g., "A1")
     match = re.fullmatch(r"([A-Z]+)(\d+)", cell)
-    if not match:
-        raise ValueError(f"Invalid cell reference '{cell}'.")
-    column = _column_to_index(match.group(1))
-    row = int(match.group(2)) - 1
-    if row < 0:
-        raise ValueError(f"Row index must be positive in '{cell}'.")
-    return row, column
+    if match:
+        column = _column_to_index(match.group(1))
+        row = int(match.group(2)) - 1
+        if row < 0:
+            raise ValueError(f"Row index must be positive in '{cell}'.")
+        return row, column
+
+    # Try row-only format (e.g., "2")
+    if re.fullmatch(r"\d+", cell):
+        row = int(cell) - 1
+        if row < 0:
+            raise ValueError(f"Row index must be positive in '{cell}'.")
+        return row, 0  # Column 0 as placeholder
+
+    # Try column-only format (e.g., "A")
+    if re.fullmatch(r"[A-Z]+", cell):
+        column = _column_to_index(cell)
+        return 0, column  # Row 0 as placeholder
+
+    raise ValueError(f"Invalid cell reference '{cell}'.")
 
 
 def _range_to_bounds(range_ref: str) -> tuple[int, int, int, int]:
-    """Convert range reference to start/end row/col bounds."""
+    """Convert range reference to start/end row/col bounds.
+
+    Supports:
+    - Standard ranges: "A1:B10" -> (0, 10, 0, 2)
+    - Single cells: "A1" -> (0, 1, 0, 1)
+    - Whole rows: "2" or "2:5" -> entire row(s)
+    - Whole columns: "A" or "A:C" -> entire column(s)
+    """
     parts = range_ref.split(":")
+
+    # Single cell/row/column
     if len(parts) == 1:
-        start = end = parts[0]
+        cell = parts[0]
+
+        # Check if it's a whole row (just a number)
+        if re.fullmatch(r"\d+", cell):
+            row = int(cell) - 1
+            if row < 0:
+                raise ValueError(f"Row index must be positive in '{cell}'.")
+            # Whole row: columns 0 to 26 (Z) - use reasonable limit
+            return row, row + 1, 0, 26
+
+        # Check if it's a whole column (just letters)
+        if re.fullmatch(r"[A-Z]+", cell):
+            col = _column_to_index(cell)
+            # Whole column: rows 0 to 1000 - use reasonable limit
+            return 0, 1000, col, col + 1
+
+        # Standard single cell
+        start_row, start_col = _parse_cell(cell)
+        return start_row, start_row + 1, start_col, start_col + 1
+
+    # Range
     elif len(parts) == 2:
         start, end = parts
+
+        # Check if it's a row range (e.g., "2:5")
+        if re.fullmatch(r"\d+", start) and re.fullmatch(r"\d+", end):
+            start_row = int(start) - 1
+            end_row = int(end) - 1
+            if start_row < 0 or end_row < 0:
+                raise ValueError(f"Row indices must be positive in '{range_ref}'.")
+            if end_row < start_row:
+                raise ValueError(f"Range '{range_ref}' has inverted bounds.")
+            # Whole rows: columns 0 to 26 (Z)
+            return start_row, end_row + 1, 0, 26
+
+        # Check if it's a column range (e.g., "A:C")
+        if re.fullmatch(r"[A-Z]+", start) and re.fullmatch(r"[A-Z]+", end):
+            start_col = _column_to_index(start)
+            end_col = _column_to_index(end)
+            if end_col < start_col:
+                raise ValueError(f"Range '{range_ref}' has inverted bounds.")
+            # Whole columns: rows 0 to 1000
+            return 0, 1000, start_col, end_col + 1
+
+        # Standard cell range
+        start_row, start_col = _parse_cell(start)
+        end_row, end_col = _parse_cell(end)
+        if end_row < start_row or end_col < start_col:
+            raise ValueError(f"Range '{range_ref}' has inverted bounds.")
+        # Convert to exclusive upper bounds for Sheets API
+        return start_row, end_row + 1, start_col, end_col + 1
+
     else:
         raise ValueError(f"Invalid range '{range_ref}'.")
-    start_row, start_col = _parse_cell(start)
-    end_row, end_col = _parse_cell(end)
-    if end_row < start_row or end_col < start_col:
-        raise ValueError(f"Range '{range_ref}' has inverted bounds.")
-    # * Convert to exclusive upper bounds for Sheets API
-    return start_row, end_row + 1, start_col, end_col + 1
 
 
 def _resolve_sheet(spreadsheet: Dict[str, Any], gid: Optional[int]) -> Dict[str, Any]:
@@ -530,24 +645,107 @@ def _cell_address(row_index: int, col_index: int) -> str:
 
 
 def _range_bounds(range_ref: str) -> tuple[int, int, int, int]:
-    """Get start/end row/col bounds from range reference."""
+    """Get start/end row/col bounds from range reference (inclusive).
+
+    Supports:
+    - Standard ranges: "A1:B10"
+    - Single cells: "A1"
+    - Whole rows: "2" or "2:5"
+    - Whole columns: "A" or "A:C"
+    """
     parts = range_ref.split(":")
+
+    # Single cell/row/column
     if len(parts) == 1:
-        start = end = parts[0]
+        cell = parts[0]
+
+        # Check if it's a whole row (just a number)
+        if re.fullmatch(r"\d+", cell):
+            row = int(cell) - 1
+            if row < 0:
+                raise ValueError(f"Row index must be positive in '{cell}'.")
+            # Whole row: columns 0 to 25 (A-Z)
+            return row, row, 0, 25
+
+        # Check if it's a whole column (just letters)
+        if re.fullmatch(r"[A-Z]+", cell):
+            col = _column_to_index(cell)
+            # Whole column: rows 0 to 999 (reasonable limit)
+            return 0, 999, col, col
+
+        # Standard single cell
+        row, col = _parse_cell(cell)
+        return row, row, col, col
+
+    # Range
     elif len(parts) == 2:
         start, end = parts
+
+        # Check if it's a row range (e.g., "2:5")
+        if re.fullmatch(r"\d+", start) and re.fullmatch(r"\d+", end):
+            start_row = int(start) - 1
+            end_row = int(end) - 1
+            if start_row < 0 or end_row < 0:
+                raise ValueError(f"Row indices must be positive in '{range_ref}'.")
+            if end_row < start_row:
+                raise ValueError(f"Range '{range_ref}' has inverted bounds.")
+            # Whole rows: columns 0 to 25 (A-Z)
+            return start_row, end_row, 0, 25
+
+        # Check if it's a column range (e.g., "A:C")
+        if re.fullmatch(r"[A-Z]+", start) and re.fullmatch(r"[A-Z]+", end):
+            start_col = _column_to_index(start)
+            end_col = _column_to_index(end)
+            if end_col < start_col:
+                raise ValueError(f"Range '{range_ref}' has inverted bounds.")
+            # Whole columns: rows 0 to 999
+            return 0, 999, start_col, end_col
+
+        # Standard cell range
+        start_row, start_col = _parse_cell(start)
+        end_row, end_col = _parse_cell(end)
+        if end_row < start_row or end_col < start_col:
+            raise ValueError(f"Range '{range_ref}' has inverted bounds.")
+        return start_row, end_row, start_col, end_col
+
     else:
         raise ValueError(f"Invalid range '{range_ref}'.")
-    start_row, start_col = _parse_cell(start)
-    end_row, end_col = _parse_cell(end)
-    if end_row < start_row or end_col < start_col:
-        raise ValueError(f"Range '{range_ref}' has inverted bounds.")
-    return start_row, end_row, start_col, end_col
 
 
 def _expand_range(range_ref: str) -> List[str]:
-    """Expand range into individual cell addresses."""
+    """Expand range into individual cell addresses.
+
+    WARNING: For whole rows/columns, this can expand to many cells.
+    We limit expansion to max 1000 cells to prevent memory issues.
+    """
     start_row, end_row, start_col, end_col = _range_bounds(range_ref)
+
+    # Calculate total cells
+    num_rows = end_row - start_row + 1
+    num_cols = end_col - start_col + 1
+    total_cells = num_rows * num_cols
+
+    # Limit expansion to prevent memory issues
+    MAX_CELLS = 1000
+    if total_cells > MAX_CELLS:
+        logger.warning(
+            f"Range '{range_ref}' expands to {total_cells} cells, limiting to {MAX_CELLS}"
+        )
+        # For large ranges, just return a sample of cells
+        # This is mainly for logging/debugging - color API handles ranges natively
+        cells: List[str] = []
+        count = 0
+        for row in range(start_row, end_row + 1):
+            for col in range(start_col, end_col + 1):
+                if count >= MAX_CELLS:
+                    break
+                cells.append(_cell_address(row, col))
+                count += 1
+            if count >= MAX_CELLS:
+                break
+        return cells
+
+    # Normal expansion
     cells: List[str] = []
     for row in range(start_row, end_row + 1):
         for col in range(start_col, end_col + 1):
