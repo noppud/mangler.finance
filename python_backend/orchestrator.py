@@ -5,12 +5,15 @@ from typing import Any, Dict, List, Optional
 
 from .creator import SheetCreator
 from .llm import LLMClient, PROMPTS
+from .logging_config import get_logger
 from .mistake_detector import MistakeDetector
 from .modifier import SheetModifier
 from .context_builder import ContextBuilder
 from .sheets_client import ServiceAccountSheetsClient
 from .utils import normalize_spreadsheet_id
 from .models import ChatMessage, SheetContext
+
+logger = get_logger(__name__)
 
 
 class AgentOrchestrator:
@@ -36,12 +39,14 @@ class AgentOrchestrator:
     sheet_context: SheetContext,
   ) -> List[ChatMessage]:
     try:
+      logger.debug(f"Processing chat with {len(messages)} message(s)")
       chat_history = self._format_chat_history(messages)
       ctx_str = self._format_sheet_context(sheet_context)
 
       system_prompt = PROMPTS.AGENT.system
       user_prompt = PROMPTS.AGENT.user(chat_history, ctx_str)
 
+      logger.debug("Calling LLM for chat processing")
       response: Dict[str, Any] = self.llm_client.chat_json(
         [
           {"role": "system", "content": system_prompt},
@@ -49,6 +54,7 @@ class AgentOrchestrator:
         ],
         overrides={"maxTokens": 3000},
       )
+      logger.debug(f"LLM response received: step={response.get('step')}")
 
       if not isinstance(response, dict):
         raise ValueError("Invalid response from LLM: expected JSON object")
@@ -59,6 +65,7 @@ class AgentOrchestrator:
 
       step = response["step"]
       if step == "answer":
+        logger.debug("LLM chose to answer directly")
         new_messages.append(
           ChatMessage(
             id=str(uuid.uuid4()),
@@ -71,7 +78,10 @@ class AgentOrchestrator:
         tool_name = tool.get("name")
         tool_args = tool.get("arguments")
         if not tool_name or tool_args is None:
+          logger.error("Invalid tool call: missing tool or arguments")
           raise ValueError("Invalid tool call: missing tool or arguments")
+
+        logger.info(f"Executing tool call: {tool_name}", extra={"tool_name": tool_name})
 
         # Assistant explanation
         new_messages.append(
@@ -84,11 +94,15 @@ class AgentOrchestrator:
 
         tool_messages = self._execute_tool_call(tool_name, tool_args, sheet_context)
         new_messages.extend(tool_messages)
+        logger.debug(f"Tool call completed: {len(tool_messages)} message(s) returned")
       else:
+        logger.error(f"Unknown step type from LLM: {step}")
         raise ValueError(f"Unknown step type: {step}")
 
+      logger.debug(f"Chat processing completed: {len(new_messages)} new message(s)")
       return new_messages
     except Exception as exc:
+      logger.error(f"Chat processing failed: {str(exc)}", exc_info=True)
       return [
         ChatMessage(
           id=str(uuid.uuid4()),

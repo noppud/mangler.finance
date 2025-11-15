@@ -2,8 +2,11 @@ from __future__ import annotations
 
 from typing import Iterable, List, Optional
 
+from .logging_config import get_logger
 from .models import ChatMessage, SheetContext
 from .supabase_client import get_supabase_client
+
+logger = get_logger(__name__)
 
 
 class ConversationLogger:
@@ -16,6 +19,10 @@ class ConversationLogger:
 
   def __init__(self) -> None:
     self._client = get_supabase_client()
+    if self._client:
+      logger.info("ConversationLogger enabled with Supabase client")
+    else:
+      logger.warning("ConversationLogger disabled: Supabase client not available")
 
   @property
   def enabled(self) -> bool:
@@ -54,12 +61,19 @@ class ConversationLogger:
       )
 
     if not rows:
+      logger.debug("No messages to log")
       return
 
     try:
+      logger.debug(f"Logging {len(rows)} message(s) to Supabase for session {session_id}")
       self._client.table("conversation_messages").insert(rows).execute()
-    except Exception:
+      logger.debug(f"Successfully logged {len(rows)} message(s)")
+    except Exception as e:
       # Persistence failures should not break the chat experience.
+      logger.warning(
+          f"Failed to persist {len(rows)} message(s) to Supabase: {str(e)}",
+          extra={"session_id": session_id, "message_count": len(rows)}
+      )
       return
 
   def _get_or_create_sheet_tab(self, ctx: SheetContext) -> Optional[str]:

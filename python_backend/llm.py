@@ -2,10 +2,15 @@ from __future__ import annotations
 
 import json
 import os
+import time
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
 import httpx
+
+from .logging_config import get_logger
+
+logger = get_logger(__name__)
 
 
 class LLMClient:
@@ -60,12 +65,41 @@ class LLMClient:
 
     url = f"{self.base_url}/chat/completions"
 
+    logger.debug(
+        f"LLM API call: model={model}, messages={len(messages)}, max_tokens={max_tokens}",
+        extra={"model": model, "message_count": len(messages), "max_tokens": max_tokens}
+    )
+
+    start_time = time.time()
     try:
       response = httpx.post(url, headers=self._build_headers(), json=payload, timeout=60.0)
       response.raise_for_status()
+      duration_ms = int((time.time() - start_time) * 1000)
+
+      logger.info(
+          f"LLM API success: {duration_ms}ms",
+          extra={"model": model, "duration_ms": duration_ms, "status_code": response.status_code}
+      )
     except httpx.RequestError as exc:
+      duration_ms = int((time.time() - start_time) * 1000)
+      logger.error(
+          f"LLM API request failed after {duration_ms}ms: {str(exc)}",
+          exc_info=True,
+          extra={"model": model, "duration_ms": duration_ms}
+      )
       raise RuntimeError(f"LLM API request failed: {exc}") from exc
     except httpx.HTTPStatusError as exc:
+      duration_ms = int((time.time() - start_time) * 1000)
+      logger.error(
+          f"LLM API error {exc.response.status_code} after {duration_ms}ms",
+          exc_info=True,
+          extra={
+              "model": model,
+              "status_code": exc.response.status_code,
+              "duration_ms": duration_ms,
+              "response_body": exc.response.text[:500]  # Truncate long responses
+          }
+      )
       raise RuntimeError(f"LLM API returned error {exc.response.status_code}: {exc.response.text}") from exc
 
     return response.json()

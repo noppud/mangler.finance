@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 import os
 import re
+import time
 import uuid
 import urllib.error
 import urllib.parse
@@ -10,13 +11,18 @@ import urllib.request
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, Request, Response
+from fastapi.responses import JSONResponse
 from pydantic import BaseModel
 
 from .backend import PythonChatBackend
+from .logging_config import get_logger
 from .memory import ConversationStore
 from .models import ChatRequest, ChatResponse
 from .service import ChatService
+
+# Initialize logger
+logger = get_logger(__name__)
 
 # * Tool imports
 import sys
@@ -53,6 +59,72 @@ service = None
 
 app = FastAPI(title="Sheet Mangler Chat API (Python Frontend)")
 
+
+# * ============================================================================
+# * Request/Response Logging Middleware
+# * ============================================================================
+
+@app.middleware("http")
+async def logging_middleware(request: Request, call_next):
+    """
+    Middleware to log all HTTP requests and responses.
+    Adds request_id for tracing and logs timing information.
+    """
+    # Generate unique request ID for tracing
+    request_id = str(uuid.uuid4())[:8]
+    start_time = time.time()
+
+    # Log incoming request
+    logger.info(
+        f"→ {request.method} {request.url.path}",
+        extra={
+            "request_id": request_id,
+            "method": request.method,
+            "endpoint": request.url.path,
+            "query_params": dict(request.query_params),
+            "client": request.client.host if request.client else None,
+        }
+    )
+
+    # Process request and handle errors
+    try:
+        response = await call_next(request)
+        duration_ms = int((time.time() - start_time) * 1000)
+
+        # Log response
+        log_level = logger.info if response.status_code < 400 else logger.error
+        log_level(
+            f"← {request.method} {request.url.path} - {response.status_code} ({duration_ms}ms)",
+            extra={
+                "request_id": request_id,
+                "method": request.method,
+                "endpoint": request.url.path,
+                "status_code": response.status_code,
+                "duration_ms": duration_ms,
+            }
+        )
+
+        return response
+
+    except Exception as exc:
+        duration_ms = int((time.time() - start_time) * 1000)
+        logger.error(
+            f"✗ {request.method} {request.url.path} - Exception ({duration_ms}ms)",
+            exc_info=True,
+            extra={
+                "request_id": request_id,
+                "method": request.method,
+                "endpoint": request.url.path,
+                "duration_ms": duration_ms,
+            }
+        )
+        # Re-raise to let FastAPI handle it
+        raise
+
+
+# * ============================================================================
+# * Initialization Functions
+# * ============================================================================
 
 def _init_chat_service() -> ChatService:
     """Lazily initialize chat service on first use."""
@@ -117,11 +189,36 @@ async def chat(request: ChatRequest) -> ChatResponse:
   For now this proxies to the Next.js backend while adding conversation
   memory keyed by sessionId.
   """
+  logger.info(
+      f"Chat request: {len(request.messages)} message(s), session={request.sessionId or '(new)'}",
+      extra={
+          "session_id": request.sessionId,
+          "message_count": len(request.messages),
+          "has_sheet_context": request.sheetContext is not None,
+      }
+  )
+
   # This implementation assumes the client is sending the full message history.
   # If you prefer CLI-style incremental messages, use ChatService.simple_chat
   # directly or adapt this endpoint accordingly.
-  svc = _init_chat_service()
-  return svc.chat(request)
+  try:
+      svc = _init_chat_service()
+      response = svc.chat(request)
+      logger.info(
+          f"Chat response: {len(response.messages)} message(s), session={response.sessionId}",
+          extra={
+              "session_id": response.sessionId,
+              "response_message_count": len(response.messages),
+          }
+      )
+      return response
+  except Exception as e:
+      logger.error(
+          f"Chat request failed: {str(e)}",
+          exc_info=True,
+          extra={"session_id": request.sessionId}
+      )
+      raise
 
 
 # * ============================================================================
@@ -222,11 +319,14 @@ def _build_color_request(sheet_id: int, cell_location: str, color: Color, note: 
 @app.post("/tools/color")
 async def apply_colors(requests: List[ColorRequest]) -> Dict[str, Any]:
     """Apply background colors to cells in spreadsheet.
-    
+
     Automatically snapshots current colors BEFORE applying new colors,
     allowing for restoration via /tools/restore endpoint.
     """
+    logger.info(f"Color request: {len(requests)} cell(s) to color")
+
     if GoogleSheetsFormulaValidator is None or DEFAULT_CREDENTIALS_PATH is None:
+        logger.error("503 Service Unavailable: Color tools not available")
         raise HTTPException(
             status_code=503,
             detail="Color tools are not available on this deployment.",
@@ -234,6 +334,7 @@ async def apply_colors(requests: List[ColorRequest]) -> Dict[str, Any]:
 
     try:
         if not requests:
+            logger.warning("No color requests provided")
             raise ValueError("No color requests provided.")
 
         url_id_match = re.search(r"/spreadsheets/d/([a-zA-Z0-9-_]+)", DEFAULT_SPREADSHEET_URL)
@@ -289,10 +390,16 @@ async def apply_colors(requests: List[ColorRequest]) -> Dict[str, Any]:
             for req in requests
         ]
 
+        logger.info(f"Applying colors to {len(batch_requests)} range(s)")
         validator.service.spreadsheets().batchUpdate(
             spreadsheetId=spreadsheet_id,
             body={"requests": batch_requests},
         ).execute()
+
+        logger.info(
+            f"Successfully colored {len(batch_requests)} range(s)",
+            extra={"count": len(batch_requests), "snapshot_batch_id": first_snapshot_batch_id}
+        )
 
         return {
             "status": "success",
@@ -301,6 +408,7 @@ async def apply_colors(requests: List[ColorRequest]) -> Dict[str, Any]:
             "snapshot_batch_id": first_snapshot_batch_id,
         }
     except Exception as e:
+        logger.error(f"Color request failed: {str(e)}", exc_info=True)
         raise HTTPException(status_code=400, detail=str(e))
 
 
@@ -657,6 +765,7 @@ def _snapshot_cell_values(
 ) -> str:
     """Snapshot current cell values to Supabase before update."""
     snapshot_batch_id = str(uuid.uuid4())
+    logger.debug(f"Fetching current values for {len(cell_locations)} cell(s)")
     values_by_cell = _fetch_cell_values(validator, spreadsheet_id, sheet_title, cell_locations)
 
     rows_to_insert: List[Dict[str, Any]] = []
@@ -671,7 +780,10 @@ def _snapshot_cell_values(
         })
 
     if rows_to_insert:
+        logger.debug(f"Posting {len(rows_to_insert)} snapshot row(s) to Supabase")
         _post_value_snapshot_to_supabase(rows_to_insert)
+    else:
+        logger.warning("No snapshot rows to insert")
 
     return snapshot_batch_id
 
@@ -679,12 +791,22 @@ def _snapshot_cell_values(
 def _post_value_snapshot_to_supabase(rows: List[Dict[str, Any]]) -> None:
     """Send cell value snapshot rows to Supabase."""
     if not rows:
+        logger.error("No rows to persist to Supabase")
         raise ValueError("No rows to persist to Supabase.")
 
     if not SUPABASE_URL or not SUPABASE_SERVICE_KEY:
+        logger.error(
+            "Supabase not configured for snapshots",
+            extra={
+                "has_url": bool(SUPABASE_URL),
+                "has_key": bool(SUPABASE_SERVICE_KEY),
+            }
+        )
         raise ValueError("SUPABASE_URL and SUPABASE_SERVICE_KEY must be configured.")
 
     url = f"{SUPABASE_URL.rstrip('/')}/rest/v1/cell_value_snapshots"
+    logger.debug(f"Posting {len(rows)} row(s) to Supabase: {url}")
+
     request = urllib.request.Request(
         url,
         method="POST",
@@ -700,9 +822,16 @@ def _post_value_snapshot_to_supabase(rows: List[Dict[str, Any]]) -> None:
     try:
         with urllib.request.urlopen(request) as response:
             if response.status not in (200, 201, 204):
+                logger.error(f"Unexpected Supabase response status: {response.status}")
                 raise RuntimeError(f"Unexpected Supabase status: {response.status}")
+            logger.debug(f"Successfully posted snapshot to Supabase: {response.status}")
     except urllib.error.HTTPError as exc:
         body = exc.read().decode("utf-8", errors="ignore")
+        logger.error(
+            f"Supabase insert failed: {exc.status}",
+            exc_info=True,
+            extra={"status_code": exc.status, "response_body": body}
+        )
         raise RuntimeError(f"Supabase insert failed: {exc.status} {body}") from exc
 
 
@@ -730,7 +859,26 @@ async def update_cells(request: UpdateCellsRequest) -> Dict[str, Any]:
         "create_snapshot": true
     }
     """
+    logger.info(
+        f"Update cells request: {len(request.updates)} update(s) on sheet '{request.sheet_title}'",
+        extra={
+            "update_count": len(request.updates),
+            "sheet_title": request.sheet_title,
+            "spreadsheet_id": request.spreadsheet_id or "(default)",
+            "create_snapshot": request.create_snapshot,
+        }
+    )
+
+    # Check if tools are available
     if GoogleSheetsFormulaValidator is None or DEFAULT_CREDENTIALS_PATH is None:
+        logger.error(
+            "503 Service Unavailable: Cell update tools not available",
+            extra={
+                "validator_available": GoogleSheetsFormulaValidator is not None,
+                "credentials_available": DEFAULT_CREDENTIALS_PATH is not None,
+                "credentials_path": os.getenv("DEFAULT_CREDENTIALS_PATH", "(not set)"),
+            }
+        )
         raise HTTPException(
             status_code=503,
             detail="Cell update tools are not available on this deployment.",
@@ -738,11 +886,13 @@ async def update_cells(request: UpdateCellsRequest) -> Dict[str, Any]:
 
     try:
         if not request.updates:
+            logger.warning("No cell updates provided in request")
             raise ValueError("No cell updates provided.")
 
         # Parse spreadsheet ID and gid
         spreadsheet_url = request.spreadsheet_id or DEFAULT_SPREADSHEET_URL
         if not spreadsheet_url:
+            logger.error("No spreadsheet URL/ID provided and no default configured")
             raise ValueError("No spreadsheet URL/ID provided and no default configured.")
 
         url_id_match = re.search(r"/spreadsheets/d/([a-zA-Z0-9-_]+)", spreadsheet_url)
@@ -750,41 +900,70 @@ async def update_cells(request: UpdateCellsRequest) -> Dict[str, Any]:
         spreadsheet_id = url_id_match.group(1) if url_id_match else spreadsheet_url
         gid = int(url_gid_match.group(1)) if url_gid_match else None
 
+        logger.debug(
+            f"Parsed spreadsheet URL: id={spreadsheet_id}, gid={gid}",
+            extra={"spreadsheet_id": spreadsheet_id, "gid": gid}
+        )
+
+        logger.debug("Initializing GoogleSheetsFormulaValidator")
         validator = GoogleSheetsFormulaValidator(DEFAULT_CREDENTIALS_PATH)
+
+        logger.debug(f"Fetching spreadsheet metadata for {spreadsheet_id}")
         spreadsheet = validator.fetch_spreadsheet(spreadsheet_id)
+        logger.info(f"Successfully fetched spreadsheet: {spreadsheet_id}")
 
         # Resolve sheet - either by gid or by title
         sheet = None
         sheets = spreadsheet.get("sheets", [])
         if not sheets:
+            logger.error("No sheets available in spreadsheet")
             raise ValueError("No sheets available in spreadsheet.")
+
+        logger.debug(f"Resolving sheet '{request.sheet_title}' from {len(sheets)} available sheet(s)")
 
         # First try to find by title
         for candidate in sheets:
             if candidate["properties"]["title"] == request.sheet_title:
                 sheet = candidate
+                logger.debug(f"Found sheet by title: '{request.sheet_title}'")
                 break
 
         # If not found by title and gid is provided, try gid
         if sheet is None and gid is not None:
+            logger.debug(f"Sheet not found by title, trying gid={gid}")
             for candidate in sheets:
                 if candidate["properties"].get("sheetId") == gid:
                     sheet = candidate
+                    logger.debug(f"Found sheet by gid: {gid}")
                     break
 
         # If still not found, use first sheet and warn
         if sheet is None:
             sheet = sheets[0]
             actual_title = sheet["properties"]["title"]
+            available_titles = [s["properties"]["title"] for s in sheets]
             if actual_title != request.sheet_title:
-                print(f"Warning: Sheet '{request.sheet_title}' not found, using '{actual_title}'")
+                logger.warning(
+                    f"Sheet '{request.sheet_title}' not found, using first sheet '{actual_title}'",
+                    extra={
+                        "requested_sheet": request.sheet_title,
+                        "used_sheet": actual_title,
+                        "available_sheets": available_titles,
+                    }
+                )
 
         sheet_props = sheet["properties"]
         sheet_title = sheet_props["title"]
 
+        logger.info(
+            f"Resolved sheet: '{sheet_title}' (gid={sheet_props.get('sheetId')})",
+            extra={"sheet_title": sheet_title, "sheet_id": sheet_props.get("sheetId")}
+        )
+
         # STEP 1: Snapshot current values if requested
         snapshot_batch_id = None
         if request.create_snapshot:
+            logger.info(f"Creating snapshot for {len(request.updates)} cell(s)")
             cell_locations = [update.cell_location for update in request.updates]
             snapshot_batch_id = _snapshot_cell_values(
                 spreadsheet_id,
@@ -793,11 +972,15 @@ async def update_cells(request: UpdateCellsRequest) -> Dict[str, Any]:
                 cell_locations,
                 validator,
             )
+            logger.info(f"Snapshot created: {snapshot_batch_id}")
+        else:
+            logger.debug("Skipping snapshot creation (create_snapshot=false)")
 
         # STEP 2: Apply updates using batch API
         batch_data: List[Dict[str, Any]] = []
         failed_updates: List[Dict[str, str]] = []
 
+        logger.debug("Processing cell updates")
         for update in request.updates:
             try:
                 cell_range = f"'{sheet_title}'!{update.cell_location}"
@@ -824,6 +1007,10 @@ async def update_cells(request: UpdateCellsRequest) -> Dict[str, Any]:
                 })
 
             except Exception as e:
+                logger.warning(
+                    f"Failed to prepare update for {update.cell_location}: {str(e)}",
+                    extra={"cell_location": update.cell_location, "error": str(e)}
+                )
                 failed_updates.append({
                     "cell_location": update.cell_location,
                     "error": str(e),
@@ -831,6 +1018,7 @@ async def update_cells(request: UpdateCellsRequest) -> Dict[str, Any]:
 
         # Execute batch update if we have valid updates
         if batch_data:
+            logger.info(f"Executing batch update for {len(batch_data)} cell(s)")
             validator.service.spreadsheets().values().batchUpdate(
                 spreadsheetId=spreadsheet_id,
                 body={
@@ -838,6 +1026,9 @@ async def update_cells(request: UpdateCellsRequest) -> Dict[str, Any]:
                     "data": batch_data,
                 },
             ).execute()
+            logger.info(f"Batch update completed successfully")
+        else:
+            logger.warning("No valid updates to apply")
 
         success_count = len(batch_data)
         total_count = len(request.updates)
@@ -845,9 +1036,22 @@ async def update_cells(request: UpdateCellsRequest) -> Dict[str, Any]:
         if failed_updates:
             status = "partial_success" if success_count > 0 else "error"
             message = f"Updated {success_count}/{total_count} cells on '{sheet_title}'. {len(failed_updates)} failed."
+            logger.warning(
+                f"Cell update completed with failures: {success_count}/{total_count} succeeded",
+                extra={
+                    "success_count": success_count,
+                    "failed_count": len(failed_updates),
+                    "total_count": total_count,
+                    "failed_cells": [f["cell_location"] for f in failed_updates],
+                }
+            )
         else:
             status = "success"
             message = f"Updated {success_count} cell(s) on '{sheet_title}'."
+            logger.info(
+                f"Cell update completed successfully: {success_count} cell(s) updated",
+                extra={"success_count": success_count}
+            )
 
         response_data = {
             "status": status,
@@ -864,6 +1068,15 @@ async def update_cells(request: UpdateCellsRequest) -> Dict[str, Any]:
         return response_data
 
     except Exception as e:
+        logger.error(
+            f"Update cells failed: {str(e)}",
+            exc_info=True,
+            extra={
+                "spreadsheet_id": request.spreadsheet_id,
+                "sheet_title": request.sheet_title,
+                "update_count": len(request.updates),
+            }
+        )
         raise HTTPException(status_code=400, detail=str(e))
 
 

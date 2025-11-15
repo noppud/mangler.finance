@@ -14,6 +14,9 @@ except ImportError:
     create_client = None  # type: ignore
 
 from .llm import _load_env_from_local_files
+from .logging_config import get_logger
+
+logger = get_logger(__name__)
 
 
 _supabase_client: Optional["Client"] = None
@@ -30,6 +33,7 @@ def get_supabase_client() -> Optional["Client"]:
 
   # If supabase package is not installed, return None
   if create_client is None or Client is None:
+    logger.warning("Supabase package not installed - client unavailable")
     return None
 
   if _supabase_client is not None:
@@ -46,12 +50,24 @@ def get_supabase_client() -> Optional["Client"]:
   )
 
   if not url or not key:
+    logger.warning(
+        "Supabase client not configured - missing URL or key",
+        extra={
+            "has_url": bool(url),
+            "has_service_role_key": bool(os.getenv("SUPABASE_SERVICE_ROLE_KEY")),
+            "has_service_key": bool(os.getenv("SUPABASE_SERVICE_KEY")),
+            "has_anon_key": bool(os.getenv("SUPABASE_ANON_KEY")),
+        }
+    )
     return None
 
   try:
+    logger.info(f"Creating Supabase client for URL: {url[:30]}...")
     _supabase_client = create_client(url, key)
-  except Exception:
+    logger.info("Supabase client created successfully")
+  except Exception as e:
     # If Supabase is misconfigured, fall back to no-op mode.
+    logger.error(f"Failed to create Supabase client: {str(e)}", exc_info=True)
     _supabase_client = None
 
   return _supabase_client
