@@ -1,0 +1,262 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>Mangler — spreadsheet-native AI workflows</title>
+    <meta name="viewport" content="width=device-width,initial-scale=1" />
+    <link rel="stylesheet" href="./theme.css" />
+  </head>
+  <body>
+    <div class="page">
+      <header class="site-header">
+        <div class="site-logo">
+          <span class="site-logo-mark"></span>
+          <span class="site-logo-text">mangler</span>
+        </div>
+        <button class="btn btn-ghost">
+          Sign in
+        </button>
+      </header>
+
+      <main>
+        <section class="hero" id="top">
+          <div>
+            <p class="hero-eyebrow">Spreadsheet-native AI</p>
+            <h1 class="hero-title">
+              Mangle messy sheets. Model-ready in seconds.
+            </h1>
+            <p class="hero-sub">
+              Sheet-Mangler is Mangler’s spreadsheet-native engine for fixing, reshaping, and orchestrating agentic workflows directly on top of your sheets.
+              Agents that read, reason, and write back—without leaving the grid.
+            </p>
+            <div class="hero-ctas">
+              <button class="btn btn-primary">Try the demo</button>
+              <button class="btn btn-ghost">View transformations</button>
+            </div>
+            <p class="hero-meta">
+              Built for data teams • SOC2-ready approach • Local and cloud
+            </p>
+          </div>
+
+          <div class="hero-visual">
+            <div class="card diff-card" aria-label="Spreadsheet transformation preview">
+              <div class="diff-header">
+                <span class="diff-header-label">messy.csv</span>
+                <span class="diff-header-label">clean.parquet</span>
+              </div>
+
+              <div class="diff-body">
+                <div>
+                  <div class="diff-pane-title">Source</div>
+                  <div class="diff-table-wrapper">
+                    <table class="table table--compact">
+                      <thead>
+                        <tr>
+                          <th>user_id</th>
+                          <th>date</th>
+                          <th>amount</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        <tr>
+                          <td>001</td>
+                          <td>3/7/23</td>
+                          <td>"10.0"</td>
+                        </tr>
+                        <tr>
+                          <td>001</td>
+                          <td>07-03-2023</td>
+                          <td>10</td>
+                        </tr>
+                        <tr>
+                          <td>001 </td>
+                          <td>2023-03-07</td>
+                          <td>10.00</td>
+                        </tr>
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+
+                <div>
+                  <div class="diff-pane-title">Output</div>
+                  <div class="diff-table-wrapper">
+                    <table class="table table--compact">
+                      <thead>
+                        <tr>
+                          <th>user_id</th>
+                          <th>date</th>
+                          <th>amount</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        <tr>
+                          <td>001</td>
+                          <td>2023-03-07</td>
+                          <td>10.00</td>
+                        </tr>
+                        <tr>
+                          <td>001</td>
+                          <td>2023-03-07</td>
+                          <td>10.00</td>
+                        </tr>
+                        <tr>
+                          <td>001</td>
+                          <td>2023-03-07</td>
+                          <td>10.00</td>
+                        </tr>
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+              </div>
+
+              <div class="diff-steps">
+                <div class="diff-steps-row">
+                  <span class="diff-step">detect schema</span>
+                  <span class="diff-step">fix types</span>
+                  <span class="diff-step">dedupe</span>
+                  <span class="diff-step">normalize dates</span>
+                  <span class="diff-step">join</span>
+                  <span class="diff-step">export</span>
+                </div>
+              </div>
+            </div>
+          </div>
+        </section>
+
+        <section class="section" id="how-it-works">
+          <h2 class="section-heading">How it works</h2>
+          <p class="section-lede">
+            Connect to live spreadsheets, repair them, and layer agentic workflows that watch for change and act on it in real time.
+          </p>
+
+          <div class="card-grid">
+            <div class="card">
+              <div class="card-title">Ingest</div>
+              <div class="card-body">
+                Connect Google Sheets, Excel, or CSVs; sync live ranges without manual exports or copy-paste.
+              </div>
+            </div>
+            <div class="card">
+              <div class="card-title">Profile</div>
+              <div class="card-body">
+                Detect schema, types, and anomalies with column-level stats across every tab.
+              </div>
+            </div>
+            <div class="card">
+              <div class="card-title">Fix</div>
+              <div class="card-body">
+                Apply rules and agents to clean formats, coerce types, and repair broken formulas.
+              </div>
+            </div>
+            <div class="card">
+              <div class="card-title">Verify</div>
+              <div class="card-body">
+                Run deterministic validators so every agent step is explainable, testable, and reversible.
+              </div>
+            </div>
+            <div class="card">
+              <div class="card-title">Export / Orchestrate</div>
+              <div class="card-body">
+                Write back to sheets, trigger downstream agents, or emit clean tables into your existing stack.
+              </div>
+            </div>
+          </div>
+
+          <div class="card" style="margin-top:16px; font-family: var(--font-mono); font-size: var(--fs-12);">
+            <div style="margin-bottom:6px; color: var(--color-text-muted); text-transform: uppercase; letter-spacing:0.12em;">
+              Workflow DSL
+            </div>
+            <pre style="margin:0; white-space:pre; overflow-x:auto;">
+workflow "month-end-close" {
+  sheet    source: "Finance/AR!A:F"
+  watch    trigger: "on_edit"
+
+  agent    name: "type-fixer",    task: "coerce amounts, normalize dates"
+  agent    name: "anomaly-scout", task: "flag outliers > 3σ"
+
+  validate rule: "total_debits == total_credits"
+  writeback target: "Finance/AR_clean!A:F"
+  notify   channel: "slack://#finance-ops"
+}
+            </pre>
+          </div>
+        </section>
+
+        <section class="section" id="components">
+          <h2 class="section-heading">Components</h2>
+          <p class="section-lede">
+            Compose sheet-native agents, triggers, and validators into workflows that live directly on top of your spreadsheets.
+          </p>
+
+          <div class="chips-row" style="margin-bottom:16px;">
+            <span class="chip chip-accent">Sheet Agents</span>
+            <span class="chip chip-accent">Workflow Triggers</span>
+            <span class="chip chip-accent">LLM Rules</span>
+            <span class="chip chip-accent">Deterministic Validators</span>
+          </div>
+          <div class="chips-row">
+            <span class="chip chip-solid">Column Mapper</span>
+            <span class="chip chip-solid">Type Coercer</span>
+            <span class="chip chip-solid">Regex Cleaner</span>
+            <span class="chip chip-solid">Sheet Diff</span>
+          </div>
+        </section>
+
+        <section class="section" id="pricing">
+          <h2 class="section-heading">Pricing</h2>
+          <p class="section-lede">
+            Start by fixing a single sheet, then promote agentic workflows across your team.
+          </p>
+
+          <div class="card-grid card-grid--cols-3">
+            <div class="card">
+              <div class="card-title">Free trial</div>
+              <div class="card-body">
+                Local runner, sample spreadsheets, and limited agent runs for evaluation.
+              </div>
+            </div>
+            <div class="card">
+              <div class="card-title">Pro</div>
+              <div class="card-body">
+                Higher row limits, saved workflows, and API access for notebooks and CI.
+              </div>
+            </div>
+            <div class="card">
+              <div class="card-title">Team</div>
+              <div class="card-body">
+                Workspaces, role-based access, and SOC2-ready deployments for shared sheet agents.
+              </div>
+            </div>
+          </div>
+        </section>
+
+        <section class="section" id="faq">
+          <h2 class="section-heading">FAQ</h2>
+
+          <div class="faq-item">
+            <div class="faq-question">Will it modify my source?</div>
+            <div class="faq-answer">
+              By default Mangler writes to separate ranges or sheets; workflows can be configured to write back in-place when you’re ready.
+            </div>
+          </div>
+
+          <div class="faq-item">
+            <div class="faq-question">How do I verify changes?</div>
+            <div class="faq-answer">
+              Every workflow logs before/after snapshots, constraint checks, and agent actions so you can diff what changed at the cell level.
+            </div>
+          </div>
+
+          <div class="faq-item">
+            <div class="faq-question">What formats are supported?</div>
+            <div class="faq-answer">
+              Google Sheets, Excel, CSV, and TSV are first-class; warehouse tables and other sources are available via connectors.
+            </div>
+          </div>
+        </section>
+      </main>
+    </div>
+  </body>
+</html>

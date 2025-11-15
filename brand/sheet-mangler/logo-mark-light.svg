@@ -1,0 +1,19 @@
+<svg width="32" height="32" viewBox="0 0 32 32" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="mangler mark">
+  <rect x="1" y="1" width="30" height="30" rx="4"
+        fill="#E6EAEF"
+        stroke="#0B0D10"
+        stroke-width="1.2"/>
+  <!-- central cut -->
+  <line x1="16" y1="6" x2="16" y2="26"
+        stroke="#0B0D10"
+        stroke-width="1.4"/>
+  <!-- monoline m -->
+  <text x="7" y="21"
+        fill="#0B0D10"
+        font-family="IBM Plex Mono, ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace"
+        font-size="14"
+        font-weight="500"
+        letter-spacing="0.06em">
+    m
+  </text>
+</svg>

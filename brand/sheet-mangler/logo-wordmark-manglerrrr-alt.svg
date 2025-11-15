@@ -1,0 +1,24 @@
+<svg width="260" height="32" viewBox="0 0 260 32" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="manglerrrr logo">
+  <rect width="260" height="32" fill="none"/>
+  <!-- precision cut -->
+  <line x1="0" y1="6" x2="60" y2="26"
+        stroke="#29E3FF"
+        stroke-width="1.4"/>
+  <!-- wordmark with extended r's -->
+  <text x="70" y="22"
+        fill="#E6EAEF"
+        font-family="Inter, system-ui, -apple-system, sans-serif"
+        font-size="18"
+        font-weight="600"
+        letter-spacing="0.08em">
+    MANGLER
+  </text>
+  <text x="174" y="22"
+        fill="#E6EAEF"
+        font-family="Inter, system-ui, -apple-system, sans-serif"
+        font-size="18"
+        font-weight="600"
+        letter-spacing="0.28em">
+    RRR
+  </text>
+</svg>
