@@ -43,6 +43,7 @@ class MistakeDetector:
       "issues": final_issues,
       "summary": self._generate_summary(final_issues),
       "scanTimestamp": _dt.datetime.utcnow().isoformat() + "Z",
+      "potential_errors": self._to_potential_errors(final_issues),
     }
 
   # --- rule-based checks ---
@@ -280,6 +281,112 @@ class MistakeDetector:
     }
 
   @staticmethod
+  def _color_for_issue(issue: Dict[str, Any]) -> str:
+    """
+    Map issue severity/category to a simple hex color for UI.
+    """
+    category = (issue.get("category") or "").lower()
+    severity = (issue.get("severity") or "").lower()
+
+    # Strong errors (broken formulas, refs) -> red
+    if category in {"formula_error", "broken_reference"} or severity == "critical":
+      return "#FF0000"
+
+    # Other structural / suspicious issues -> purple
+    if category in {"inconsistent_formula", "type_mismatch", "suspicious_pattern"}:
+      return "#9933FF"
+
+    # Severity-based fallbacks
+    if severity == "high":
+      return "#FF6600"
+    if severity == "medium":
+      return "#FFA500"
+    if severity == "low":
+      return "#9933FF"
+
+    # Default neutral gray
+    return "#808080"
+
+  @classmethod
+  def _to_potential_errors(cls, issues: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    """
+    Flatten detailed issues into a simpler structure expected by
+    external consumers:
+
+    {
+      "potential_errors": [
+        { "cell_location": "A1:B10", "message": "...", "color": "#9933FF" }
+      ]
+    }
+    """
+    potential_errors: List[Dict[str, Any]] = []
+
+    for issue in issues:
+      color = cls._color_for_issue(issue)
+      ranges = issue.get("ranges") or []
+
+      # If we have explicit ranges, emit one entry per range
+      if ranges:
+        for r in ranges:
+          cell_location = (
+            r.get("a1Notation")
+            or r.get("description")
+            or issue.get("title")
+            or "Unknown location"
+          )
+          message = (
+            issue.get("description")
+            or issue.get("title")
+            or "Potential issue detected in the sheet."
+          )
+          potential_errors.append(
+            {
+              # Original minimal fields used by the Sheets highlighter
+              "cell_location": cell_location,
+              "message": message,
+              "color": color,
+              # Enriched metadata so this becomes the single source of truth
+              "issue_id": issue.get("id"),
+              "category": issue.get("category"),
+              "severity": issue.get("severity"),
+              "title": issue.get("title"),
+              "description": issue.get("description"),
+              "suggestedFix": issue.get("suggestedFix"),
+              "autoFixable": issue.get("autoFixable"),
+              "detectedBy": issue.get("detectedBy"),
+              "confidence": issue.get("confidence"),
+              "range": r,
+            }
+          )
+      else:
+        # Fallback when no ranges are provided
+        cell_location = issue.get("title") or "Unknown location"
+        message = (
+          issue.get("description")
+          or issue.get("title")
+          or "Potential issue detected in the sheet."
+        )
+        potential_errors.append(
+          {
+            "cell_location": cell_location,
+            "message": message,
+            "color": color,
+            "issue_id": issue.get("id"),
+            "category": issue.get("category"),
+            "severity": issue.get("severity"),
+            "title": issue.get("title"),
+            "description": issue.get("description"),
+            "suggestedFix": issue.get("suggestedFix"),
+            "autoFixable": issue.get("autoFixable"),
+            "detectedBy": issue.get("detectedBy"),
+            "confidence": issue.get("confidence"),
+            "range": None,
+          }
+        )
+
+    return potential_errors
+
+  @staticmethod
   def _column_to_letter(column: int) -> str:
     letter = ""
     while column > 0:
@@ -287,5 +394,3 @@ class MistakeDetector:
       letter = chr(65 + remainder) + letter
       column = (column - 1) // 26
     return letter
-
-

@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import os
+from pathlib import Path
 from typing import Any, Dict, List, Optional
 
 import httpx
@@ -114,7 +115,54 @@ class LLMClient:
       raise RuntimeError(f"Failed to parse LLM response as JSON: {exc}\nContent was:\n{content}") from exc
 
 
+def _load_env_from_local_files() -> None:
+  """
+  Load environment variables from local .env-style files if they exist.
+
+  This lets the Python backend reuse the same config as the Next.js app
+  (e.g. sheet-mangler/.env.local) without requiring manual exports, and
+  also supports python_backend-local .env files.
+  """
+  try:
+    backend_root = Path(__file__).resolve().parent
+    repo_root = backend_root.parent
+  except Exception:
+    return
+
+  candidates = [
+    # Prefer project-local env files
+    backend_root / ".env.local",
+    backend_root / ".env",
+    # Then repo-root env files
+    repo_root / ".env.local",
+    repo_root / ".env",
+    # Finally, reuse the Next.js app config if present
+    repo_root / "sheet-mangler" / ".env.local",
+  ]
+
+  for env_path in candidates:
+    if not env_path.exists():
+      continue
+    try:
+      for raw_line in env_path.read_text().splitlines():
+        line = raw_line.strip()
+        if not line or line.startswith("#") or "=" not in line:
+          continue
+        key, value = line.split("=", 1)
+        key = key.strip()
+        value = value.strip()
+        # Do not override values already set in the process environment
+        if key and key not in os.environ:
+          os.environ[key] = value
+    except Exception:
+      # If parsing fails for any reason, skip this file and try the next
+      continue
+
+
 def create_llm_client() -> LLMClient:
+  # Ensure env vars are populated from local config files if present
+  _load_env_from_local_files()
+
   api_key = os.getenv("OPENROUTER_API_KEY")
   if not api_key:
     raise RuntimeError("OPENROUTER_API_KEY environment variable not set")
@@ -256,8 +304,29 @@ class PROMPTS:
     system: str = (
       "You are Sheet Mangler, an AI assistant for working with Google Sheets. You help users detect issues, "
       "modify existing sheets, and create new spreadsheets through a conversational interface.\n\n"
-      "You have three tools: detect_issues, modify_sheet, create_sheet. Follow the response format described "
-      "in the original system prompt and ALWAYS return JSON only with either step='answer' or step='tool_call'."
+      "You have three tools: detect_issues, modify_sheet, create_sheet.\n\n"
+      "Always respond with **JSON only** (no markdown, no natural language outside JSON) using this schema:\n"
+      "{\n"
+      '  "step": "answer" | "tool_call",\n'
+      '  "assistantMessage": "string",\n'
+      '  "tool": {\n'
+      '    "name"?: "detect_issues" | "modify_sheet" | "create_sheet",\n'
+      '    "arguments"?: {\n'
+      '      "spreadsheetId"?: "string",\n'
+      '      "sheetTitle"?: "string",\n'
+      '      "prompt"?: "string",\n'
+      '      "constraints"?: { },\n'
+      '      "config"?: {\n'
+      '        "includeRuleBased"?: true | false,\n'
+      '        "includeLLMBased"?: true | false\n'
+      "      }\n"
+      "    }\n"
+      "  }\n"
+      "}\n\n"
+      "- For simple conversational replies, use step=\"answer\" and ignore the tool field.\n"
+      "- To call a tool, use step=\"tool_call\" and set tool.name and tool.arguments appropriately.\n"
+      "- Ask the user for missing spreadsheetId or sheetTitle if needed before calling tools.\n"
+      "- Be conservative with modifications; explain what you plan to do in assistantMessage before and after tool calls."
     )
 
     @staticmethod
@@ -314,5 +383,3 @@ def format_sample_data(sample_data: Any) -> str:
     formatted += f"Row {idx + 1}: " + " | ".join(values) + "\n"
 
   return formatted
-
-

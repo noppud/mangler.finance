@@ -30,6 +30,7 @@ Endpoint:
 ```text
 POST /chat
 Content-Type: application/json
+Accept: application/json
 ```
 
 Request body (`ChatRequest`):
@@ -72,6 +73,29 @@ Response body (`ChatResponse`):
 ```
 
 The backend only returns *new* messages for this turn, not the full history.
+
+---
+
+### Quick sanity check request
+
+To verify the API and LLM wiring without any sheet context or memory, you can use this minimal request:
+
+```bash
+curl -X POST http://localhost:8000/chat \
+  -H "Content-Type: application/json" \
+  -d '{
+    "messages": [
+      {
+        "id": "test-1",
+        "role": "user",
+        "content": "Hello",
+        "metadata": null
+      }
+    ]
+  }'
+```
+
+If everything is configured correctly (environment variables, OpenRouter key, model), this should return a normal `assistant` message rather than an error.
 
 ---
 
@@ -266,4 +290,3 @@ python -m python_backend.cli \
 ```
 
 Then type messages at the `You:` prompt. The CLI uses the same in-memory conversation store and tools as the HTTP `/chat` endpoint.
-

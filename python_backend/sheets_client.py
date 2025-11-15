@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import os
 from typing import Any, Dict, List, Optional
-
+from pathlib import Path
 from google.oauth2 import service_account
 from googleapiclient.discovery import build
 
@@ -15,32 +15,39 @@ class ServiceAccountSheetsClient:
 
   def __init__(self, credentials_path: Optional[str] = None) -> None:
     if credentials_path is None:
+      # Resolve project paths relative to this file, not the CWD
+      backend_root = Path(__file__).resolve().parent
+      repo_root = backend_root.parent
+
       # Allow overriding via env var, then fall back to known locations
       env_path = os.getenv("GOOGLE_SERVICE_ACCOUNT_FILE")
-      candidate_paths = []
+      candidate_paths: List[Path] = []
       if env_path:
-        candidate_paths.append(env_path)
-      # Root of repo (if run from sheet-mangler in TS version)
+        candidate_paths.append(Path(env_path))
+
+      # Preferred: dedicated key file for the Python backend
+      candidate_paths.append(backend_root / "service-account.json")
+
+      # Backwards-compatible fallbacks for existing setups
+      candidate_paths.append(repo_root / "fintech-hackathon-478313-93c79ddbebac.json")
       candidate_paths.append(
-        os.path.join(os.getcwd(), "fintech-hackathon-478313-93c79ddbebac.json")
-      )
-      # Under sheet-mangler/ as in the Next.js app
-      candidate_paths.append(
-        os.path.join(os.getcwd(), "sheet-mangler", "fintech-hackathon-478313-93c79ddbebac.json")
+        repo_root / "sheet-mangler" / "fintech-hackathon-478313-93c79ddbebac.json"
       )
 
-      credentials_path = None
+      resolved_path: Optional[Path] = None
       for candidate in candidate_paths:
-        if candidate and os.path.exists(candidate):
-          credentials_path = candidate
+        if candidate and candidate.is_file():
+          resolved_path = candidate
           break
 
-      if not credentials_path:
+      if not resolved_path:
         raise FileNotFoundError(
-          "Could not find Google service account JSON. "
-          "Set GOOGLE_SERVICE_ACCOUNT_FILE or place fintech-hackathon-478313-93c79ddbebac.json "
-          "in the repo root or in sheet-mangler/."
+          "Could not find Google service account key JSON. "
+          "Set GOOGLE_SERVICE_ACCOUNT_FILE to the downloaded key file path "
+          "or place service-account.json in the python_backend/ directory."
         )
+
+      credentials_path = str(resolved_path)
 
     scopes = [
       "https://www.googleapis.com/auth/spreadsheets",
@@ -346,4 +353,3 @@ class ServiceAccountSheetsClient:
       )
       .execute()
     )
-
