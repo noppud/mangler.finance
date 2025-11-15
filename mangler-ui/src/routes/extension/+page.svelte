@@ -141,20 +141,7 @@
 					<p class="hint">Copy this email and share your sheet with Editor permissions</p>
 				</div>
 
-				<div class="share-instructions">
-					<h3>How to share:</h3>
-					<ol>
-						<li>Open your Google Sheet</li>
-						<li>Click the <strong>Share</strong> button (top right)</li>
-						<li>Paste the service account email above</li>
-						<li>
-							Set permission to <strong>Editor</strong>
-						</li>
-						<li>Click <strong>Send</strong></li>
-					</ol>
-				</div>
-
-				<h2>Step 2: Enter Your Sheet URL</h2>
+					<h2>Step 2: Enter Your Sheet URL</h2>
 				<p class="instruction">
 					After sharing, paste the full URL of your Google Sheet below:
 				</p>
@@ -192,7 +179,7 @@
 			<div class="card status-card">
 				<div class="spinner"></div>
 				<h2>Installing Extension...</h2>
-				<p>Adding AI Copilot to "{spreadsheetName}"</p>
+				<p>Adding Mangler Extension to "{spreadsheetName}"</p>
 			</div>
 		{/if}
 
@@ -216,7 +203,7 @@
 							Refresh the page (you may need to wait a few seconds for the menu to appear)
 						</li>
 						<li>
-							Click <strong>AI Copilot → Open Copilot</strong> from the menu
+							Click <strong>Mangler → Open Mangler</strong> from the menu
 						</li>
 						<li>Start chatting with your spreadsheet!</li>
 					</ol>
