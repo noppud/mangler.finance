@@ -245,7 +245,7 @@ class AgentOrchestrator:
         create_snapshot = args.get("create_snapshot", True)
 
         # Call the update_cells API endpoint
-        api_url = "http://localhost:8000/tools/update_cells"
+        api_url = "https://api.sheetmangler.com/tools/update_cells"
         payload = {
           "updates": updates,
           "spreadsheet_id": spreadsheet_id,
