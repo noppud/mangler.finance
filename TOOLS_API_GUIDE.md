@@ -2,13 +2,44 @@
 
 This guide documents the new tool endpoints added to the FastAPI backend in `python_backend/api.py`.
 
+## Quick Start - Tested API Calls
+
+### 1. Apply Colors (Auto-Snapshots)
+
+```bash
+curl -X POST http://localhost:8000/tools/color \
+  -H "Content-Type: application/json" \
+  -d '[{"cell_location": "A1", "message": "Error", "color": "#FF0000"}]'
+```
+
+**Response:**
+```json
+{
+  "status": "success",
+  "message": "Colored 1 range(s) on 'morris'.",
+  "count": 1,
+  "snapshot_batch_id": "59bef70a-b547-51e7-8656-cc314100a25b"
+}
+```
+
+### 2. Restore Colors
+
+```bash
+curl -X POST http://localhost:8000/tools/restore \
+  -H "Content-Type: application/json" \
+  -d '{"snapshot_batch_id": "59bef70a-b547-51e7-8656-cc314100a25b"}'
+```
+
+This restores the cells to their original colors before the change!
+
+---
+
 ## Overview
 
-Three new endpoints have been added to enable spreadsheet color management:
+Two endpoints handle spreadsheet color management:
 
-1. **`POST /tools/color`** - Apply background colors to cells
-2. **`POST /tools/snapshot`** - Snapshot cell colors to Supabase
-3. **`POST /tools/restore`** - Restore cell colors from Supabase snapshot
+1. **`POST /tools/color`** - Apply background colors to cells (automatically snapshots first)
+2. **`POST /tools/restore`** - Restore cell colors from Supabase snapshot
 
 ## Prerequisites
 
@@ -77,52 +108,7 @@ curl -X POST http://localhost:8000/tools/color \
 
 ---
 
-## Endpoint 2: Snapshot Colors
-
-### `POST /tools/snapshot`
-
-Take a snapshot of current cell colors and store in Supabase for later restoration.
-
-**Request Body:**
-```json
-{
-  "cell_locations": ["A1", "B2:C5", "D10"]
-}
-```
-
-**Parameters:**
-- `cell_locations` (array): List of cells or ranges to snapshot
-
-**Response (Success - 200):**
-```json
-{
-  "status": "success",
-  "message": "Stored 10 cell color(s) across 3 batch id(s).",
-  "snapshot_batch_id": "123e4567-e89b-12d3-a456-426614174000",
-  "total_cells": 10,
-  "total_batches": 3
-}
-```
-
-**Response (Error - 400):**
-```json
-{
-  "detail": "No sheets available in spreadsheet."
-}
-```
-
-**Example cURL:**
-```bash
-curl -X POST http://localhost:8000/tools/snapshot \
-  -H "Content-Type: application/json" \
-  -d '{"cell_locations": ["A1:D10", "F5:G8"]}'
-```
-
-**Important:** Save the `snapshot_batch_id` - you'll need it to restore colors later!
-
----
-
-## Endpoint 3: Restore Colors
+## Endpoint 2: Restore Colors
 
 ### `POST /tools/restore`
 
@@ -182,22 +168,18 @@ curl -X POST http://localhost:8000/tools/color \
   ]'
 ```
 
-### Use Case 2: Save and restore workflow
+### Use Case 2: Color with automatic snapshot and restore
 
 ```bash
-# Step 1: Snapshot current state
-BATCH_ID=$(curl -s -X POST http://localhost:8000/tools/snapshot \
+# Step 1: Apply colors (automatically snapshots current colors)
+RESPONSE=$(curl -s -X POST http://localhost:8000/tools/color \
   -H "Content-Type: application/json" \
-  -d '{"cell_locations": ["A1:Z100"]}' | jq -r '.snapshot_batch_id')
+  -d '[{"cell_location": "A1:Z100", "message": "Highlighted for review", "color": "#FFFF00"}]')
 
-echo "Saved snapshot: $BATCH_ID"
+BATCH_ID=$(echo $RESPONSE | jq -r '.snapshot_batch_id')
+echo "Applied colors. Snapshot ID: $BATCH_ID"
 
-# Step 2: Apply some colors
-curl -X POST http://localhost:8000/tools/color \
-  -H "Content-Type: application/json" \
-  -d '[{"cell_location": "A1:Z100", "message": "Test", "color": "#FFFF00"}]'
-
-# Step 3: Restore original colors later
+# Step 2: Later, restore original colors
 curl -X POST http://localhost:8000/tools/restore \
   -H "Content-Type: application/json" \
   -d "{\"snapshot_batch_id\": \"$BATCH_ID\"}"
@@ -300,9 +282,8 @@ if batch_id:
 These endpoints are designed to work alongside the existing `/chat` endpoint. Your LLM can:
 
 1. Analyze formulas using the chat endpoint
-2. Use `/tools/color` to highlight problematic cells
-3. Use `/tools/snapshot` before making changes
-4. Use `/tools/restore` to undo if needed
+2. Use `/tools/color` to highlight problematic cells (automatically snapshots)
+3. Use `/tools/restore` to undo changes if needed using the returned snapshot_batch_id
 
 ---
 

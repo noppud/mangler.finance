@@ -41,11 +41,22 @@ SUPABASE_SERVICE_KEY = os.environ.get("SUPABASE_SERVICE_KEY")
 Color = Dict[str, float]
 WHITE: Color = {"red": 1.0, "green": 1.0, "blue": 1.0}
 
-store = ConversationStore()
-backend = PythonChatBackend()
-service = ChatService(backend=backend, store=store)
+# * Lazy initialization - only create when chat endpoint is called
+store = None
+backend = None
+service = None
 
 app = FastAPI(title="Sheet Mangler Chat API (Python Frontend)")
+
+
+def _init_chat_service() -> ChatService:
+    """Lazily initialize chat service on first use."""
+    global store, backend, service
+    if service is None:
+        store = ConversationStore()
+        backend = PythonChatBackend()
+        service = ChatService(backend=backend, store=store)
+    return service
 
 
 # * ============================================================================
@@ -57,11 +68,6 @@ class ColorRequest(BaseModel):
     cell_location: str
     message: str
     color: str  # hex color like #FF0000
-
-
-class SnapshotRequest(BaseModel):
-    """Request to snapshot cell colors to Supabase."""
-    cell_locations: List[str]
 
 
 class RestoreRequest(BaseModel):
@@ -85,7 +91,8 @@ async def chat(request: ChatRequest) -> ChatResponse:
   # This implementation assumes the client is sending the full message history.
   # If you prefer CLI-style incremental messages, use ChatService.simple_chat
   # directly or adapt this endpoint accordingly.
-  return service.chat(request)
+  svc = _init_chat_service()
+  return svc.chat(request)
 
 
 # * ============================================================================
@@ -185,7 +192,11 @@ def _build_color_request(sheet_id: int, cell_location: str, color: Color, note: 
 
 @app.post("/tools/color")
 async def apply_colors(requests: List[ColorRequest]) -> Dict[str, Any]:
-    """Apply background colors to cells in spreadsheet."""
+    """Apply background colors to cells in spreadsheet.
+    
+    Automatically snapshots current colors BEFORE applying new colors,
+    allowing for restoration via /tools/restore endpoint.
+    """
     try:
         if not requests:
             raise ValueError("No color requests provided.")
@@ -199,7 +210,45 @@ async def apply_colors(requests: List[ColorRequest]) -> Dict[str, Any]:
         spreadsheet = validator.fetch_spreadsheet(spreadsheet_id)
         sheet = _resolve_sheet(spreadsheet, gid)
         sheet_props = sheet["properties"]
+        sheet_title = sheet_props["title"]
 
+        # * STEP 1: Snapshot current colors BEFORE applying new ones
+        cell_ranges = list(set(req.cell_location for req in requests))
+        rows_to_insert: List[Dict[str, Any]] = []
+        
+        for range_ref in cell_ranges:
+            snapshot_batch_id = uuid.uuid5(
+                uuid.NAMESPACE_URL,
+                f"{spreadsheet_id}:{gid}:{range_ref}",
+            )
+            colors_by_cell = _fetch_colors_for_range(validator, spreadsheet_id, sheet_title, range_ref)
+            for cell in _expand_range(range_ref):
+                color = colors_by_cell.get(cell, WHITE)
+                rows_to_insert.append(
+                    {
+                        "snapshot_batch_id": str(snapshot_batch_id),
+                        "spreadsheet_id": spreadsheet_id,
+                        "gid": gid,
+                        "cell": cell,
+                        "red": float(color["red"]),
+                        "green": float(color["green"]),
+                        "blue": float(color["blue"]),
+                    }
+                )
+        
+        if rows_to_insert:
+            _post_to_supabase(rows_to_insert)
+
+        # * Get first snapshot batch ID for response
+        first_snapshot_batch_id = None
+        if cell_ranges:
+            first_range = cell_ranges[0]
+            first_snapshot_batch_id = str(uuid.uuid5(
+                uuid.NAMESPACE_URL,
+                f"{spreadsheet_id}:{gid}:{first_range}",
+            ))
+
+        # * STEP 2: Apply the new colors
         batch_requests = [
             _build_color_request(sheet_props["sheetId"], req.cell_location, _hex_color_to_rgb(req.color), req.message)
             for req in requests
@@ -214,13 +263,14 @@ async def apply_colors(requests: List[ColorRequest]) -> Dict[str, Any]:
             "status": "success",
             "message": f"Colored {len(batch_requests)} range(s) on '{sheet_props['title']}'.",
             "count": len(batch_requests),
+            "snapshot_batch_id": first_snapshot_batch_id,
         }
     except Exception as e:
         raise HTTPException(status_code=400, detail=str(e))
 
 
 # * ============================================================================
-# * Snapshot Tool Endpoints
+# * Helper Functions for Snapshot & Restore
 # * ============================================================================
 
 def _column_index(label: str) -> int:
@@ -358,83 +408,6 @@ def _post_to_supabase(rows: List[Dict[str, Any]]) -> None:
     except urllib.error.HTTPError as exc:
         body = exc.read().decode("utf-8", errors="ignore")
         raise RuntimeError(f"Supabase insert failed: {exc.status} {body}") from exc
-
-
-@app.post("/tools/snapshot")
-async def snapshot_colors(request: SnapshotRequest) -> Dict[str, Any]:
-    """Snapshot cell colors to Supabase."""
-    try:
-        ranges = request.cell_locations
-
-        url_id_match = re.search(r"/spreadsheets/d/([a-zA-Z0-9-_]+)", DEFAULT_SPREADSHEET_URL)
-        url_gid_match = re.search(r"[?&]gid=(\d+)", DEFAULT_SPREADSHEET_URL)
-        spreadsheet_id = url_id_match.group(1) if url_id_match else DEFAULT_SPREADSHEET_URL
-        gid = int(url_gid_match.group(1)) if url_gid_match else None
-
-        validator = GoogleSheetsFormulaValidator(DEFAULT_CREDENTIALS_PATH)
-        spreadsheet = validator.fetch_spreadsheet(spreadsheet_id)
-        sheets = spreadsheet.get("sheets", [])
-        if not sheets:
-            raise ValueError("No sheets available in spreadsheet.")
-
-        sheet = None
-        if gid is None:
-            sheet = sheets[0]
-        else:
-            for candidate in sheets:
-                if candidate["properties"].get("sheetId") == gid:
-                    sheet = candidate
-                    break
-        if sheet is None:
-            raise ValueError(f"No sheet found with gid={gid}.")
-
-        sheet_props = sheet["properties"]
-        sheet_title = sheet_props["title"]
-
-        rows_to_insert: List[Dict[str, Any]] = []
-        for range_ref in ranges:
-            snapshot_batch_id = uuid.uuid5(
-                uuid.NAMESPACE_URL,
-                f"{spreadsheet_id}:{gid}:{range_ref}",
-            )
-            colors_by_cell = _fetch_colors_for_range(validator, spreadsheet_id, sheet_title, range_ref)
-            for cell in _expand_range(range_ref):
-                color = colors_by_cell.get(cell, WHITE)
-                rows_to_insert.append(
-                    {
-                        "snapshot_batch_id": str(snapshot_batch_id),
-                        "spreadsheet_id": spreadsheet_id,
-                        "gid": gid,
-                        "cell": cell,
-                        "red": float(color["red"]),
-                        "green": float(color["green"]),
-                        "blue": float(color["blue"]),
-                    }
-                )
-
-        _post_to_supabase(rows_to_insert)
-
-        total_cells = len(rows_to_insert)
-        total_batches = len(ranges)
-
-        # * Get first snapshot batch ID for response
-        first_snapshot_batch_id = None
-        if ranges:
-            first_range = ranges[0]
-            first_snapshot_batch_id = str(uuid.uuid5(
-                uuid.NAMESPACE_URL,
-                f"{spreadsheet_id}:{gid}:{first_range}",
-            ))
-
-        return {
-            "status": "success",
-            "message": f"Stored {total_cells} cell color(s) across {total_batches} batch id(s).",
-            "snapshot_batch_id": first_snapshot_batch_id,
-            "total_cells": total_cells,
-            "total_batches": total_batches,
-        }
-    except Exception as e:
-        raise HTTPException(status_code=400, detail=str(e))
 
 
 # * ============================================================================
