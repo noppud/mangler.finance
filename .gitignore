@@ -23,6 +23,7 @@
 # misc
 .DS_Store
 *.pem
+fintech-hackathon-478313-93c79ddbebac.json
 
 # debug
 npm-debug.log*
