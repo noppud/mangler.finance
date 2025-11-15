@@ -24,11 +24,16 @@ PROJECT_ROOT = Path(__file__).resolve().parents[1]
 if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
-from tools.google_sheets import (
-    DEFAULT_CREDENTIALS_PATH,
-    DEFAULT_SPREADSHEET_URL,
-    GoogleSheetsFormulaValidator,
-)
+try:
+    from tools.google_sheets import (
+        DEFAULT_CREDENTIALS_PATH,
+        DEFAULT_SPREADSHEET_URL,
+        GoogleSheetsFormulaValidator,
+    )
+except ImportError:  # pragma: no cover - optional tools
+    DEFAULT_CREDENTIALS_PATH = None  # type: ignore[assignment]
+    DEFAULT_SPREADSHEET_URL = ""  # type: ignore[assignment]
+    GoogleSheetsFormulaValidator = None  # type: ignore[assignment]
 
 # * Environment
 from dotenv import load_dotenv
@@ -197,6 +202,12 @@ async def apply_colors(requests: List[ColorRequest]) -> Dict[str, Any]:
     Automatically snapshots current colors BEFORE applying new colors,
     allowing for restoration via /tools/restore endpoint.
     """
+    if GoogleSheetsFormulaValidator is None or DEFAULT_CREDENTIALS_PATH is None:
+        raise HTTPException(
+            status_code=503,
+            detail="Color tools are not available on this deployment.",
+        )
+
     try:
         if not requests:
             raise ValueError("No color requests provided.")
@@ -489,6 +500,12 @@ def _build_repeat_cell(sheet_id: int, row: int, col: int, color: Color) -> Dict[
 @app.post("/tools/restore")
 async def restore_colors(request: RestoreRequest) -> Dict[str, Any]:
     """Restore colors from Supabase snapshot."""
+    if GoogleSheetsFormulaValidator is None or DEFAULT_CREDENTIALS_PATH is None:
+        raise HTTPException(
+            status_code=503,
+            detail="Color tools are not available on this deployment.",
+        )
+
     try:
         snapshot_batch_id = request.snapshot_batch_id
         expected_cells = None
@@ -564,4 +581,3 @@ async def restore_colors(request: RestoreRequest) -> Dict[str, Any]:
         }
     except Exception as e:
         raise HTTPException(status_code=400, detail=str(e))
-
