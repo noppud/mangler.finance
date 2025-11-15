@@ -1,5 +1,6 @@
 fastapi
 uvicorn
+hypercorn
 pydantic>=2
 httpx
 google-api-python-client
