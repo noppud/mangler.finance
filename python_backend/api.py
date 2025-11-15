@@ -213,6 +213,7 @@ class ColorRequest(BaseModel):
     cell_location: str
     message: str
     color: str  # hex color like #FF0000
+    url: str  # Spreadsheet URL from Apps Script
 
 
 class RestoreRequest(BaseModel):
@@ -412,10 +413,21 @@ async def apply_colors(requests: List[ColorRequest]) -> Dict[str, Any]:
             logger.warning("No color requests provided")
             raise ValueError("No color requests provided.")
 
-        url_id_match = re.search(r"/spreadsheets/d/([a-zA-Z0-9-_]+)", DEFAULT_SPREADSHEET_URL)
-        url_gid_match = re.search(r"[?&]gid=(\d+)", DEFAULT_SPREADSHEET_URL)
-        spreadsheet_id = url_id_match.group(1) if url_id_match else DEFAULT_SPREADSHEET_URL
+        # Use URL from the first request (all requests should be for the same spreadsheet)
+        spreadsheet_url = requests[0].url
+        logger.info(f"Using spreadsheet URL from request: {spreadsheet_url}")
+
+        url_id_match = re.search(r"/spreadsheets/d/([a-zA-Z0-9-_]+)", spreadsheet_url)
+        url_gid_match = re.search(r"[?&]gid=(\d+)", spreadsheet_url)
+
+        if not url_id_match:
+            logger.error(f"Invalid spreadsheet URL format: {spreadsheet_url}")
+            raise ValueError(f"Invalid spreadsheet URL format: {spreadsheet_url}")
+
+        spreadsheet_id = url_id_match.group(1)
         gid = int(url_gid_match.group(1)) if url_gid_match else None
+
+        logger.info(f"Extracted spreadsheet_id: {spreadsheet_id}, gid: {gid}")
 
         spreadsheet = validator.fetch_spreadsheet(spreadsheet_id)
         sheet = _resolve_sheet(spreadsheet, gid)
@@ -721,11 +733,55 @@ async def restore_colors(request: RestoreRequest) -> Dict[str, Any]:
             for range_ref in request.cell_locations:
                 expected_cells.update(_expand_range(range_ref))
 
-        url_id_match = re.search(r"/spreadsheets/d/([a-zA-Z0-9-_]+)", DEFAULT_SPREADSHEET_URL)
-        url_gid_match = re.search(r"[?&]gid=(\d+)", DEFAULT_SPREADSHEET_URL)
-        spreadsheet_id = url_id_match.group(1) if url_id_match else DEFAULT_SPREADSHEET_URL
-        gid = int(url_gid_match.group(1)) if url_gid_match else None
+        # First, fetch snapshot rows to get spreadsheet_id and gid from the snapshot data
+        logger.info(f"Fetching snapshot rows for batch_id: {snapshot_batch_id}")
 
+        # We need to fetch without filtering by spreadsheet_id/gid first
+        if not SUPABASE_URL or not SUPABASE_SERVICE_KEY:
+            raise ValueError("SUPABASE_URL and SUPABASE_SERVICE_KEY must be configured.")
+
+        params = {
+            "select": "cell,red,green,blue,spreadsheet_id,gid",
+            "snapshot_batch_id": f"eq.{snapshot_batch_id}",
+            "limit": "1",  # Just get one row to extract spreadsheet_id and gid
+        }
+        query = urllib.parse.urlencode(params, doseq=True)
+        url = f"{SUPABASE_URL.rstrip('/')}/rest/v1/cell_color_snapshots?{query}"
+
+        req = urllib.request.Request(
+            url,
+            method="GET",
+            headers={
+                "apikey": SUPABASE_SERVICE_KEY,
+                "Authorization": f"Bearer {SUPABASE_SERVICE_KEY}",
+                "Accept": "application/json",
+            },
+        )
+
+        try:
+            with urllib.request.urlopen(req) as response:
+                if response.status != 200:
+                    raise RuntimeError(f"Unexpected Supabase status: {response.status}")
+                payload = response.read()
+        except urllib.error.HTTPError as exc:
+            body = exc.read().decode("utf-8", errors="ignore")
+            raise RuntimeError(f"Supabase fetch failed: {exc.status} {body}") from exc
+
+        sample_rows = json.loads(payload)
+        if not isinstance(sample_rows, list) or not sample_rows:
+            raise ValueError(f"No snapshot rows found for batch id '{snapshot_batch_id}'.")
+
+        # Extract spreadsheet_id and gid from first row
+        first_row = sample_rows[0]
+        spreadsheet_id = first_row.get("spreadsheet_id")
+        gid = first_row.get("gid")
+
+        if not spreadsheet_id:
+            raise ValueError("Snapshot is missing spreadsheet_id")
+
+        logger.info(f"Extracted from snapshot: spreadsheet_id={spreadsheet_id}, gid={gid}")
+
+        # Now fetch the full spreadsheet and sheet info
         spreadsheet = validator.fetch_spreadsheet(spreadsheet_id)
         sheets = spreadsheet.get("sheets", [])
         if not sheets:
@@ -746,6 +802,7 @@ async def restore_colors(request: RestoreRequest) -> Dict[str, Any]:
         sheet_id = sheet_props["sheetId"]
         sheet_title = sheet_props["title"]
 
+        # Now fetch all snapshot rows for this spreadsheet
         snapshot_rows = _fetch_snapshot_rows(snapshot_batch_id, spreadsheet_id, gid)
         if not snapshot_rows:
             raise ValueError(f"No snapshot rows found for batch id '{snapshot_batch_id}'.")
