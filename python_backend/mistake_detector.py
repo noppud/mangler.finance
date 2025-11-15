@@ -37,13 +37,16 @@ class MistakeDetector:
     max_issues = config.get("maxIssues")
     final_issues = filtered[:max_issues] if max_issues else filtered
 
+    # Build spreadsheet URL from ID
+    spreadsheet_url = f"https://docs.google.com/spreadsheets/d/{spreadsheet_id}"
+
     return {
       "spreadsheetId": spreadsheet_id,
       "sheetTitle": sheet_title,
       "issues": final_issues,
       "summary": self._generate_summary(final_issues),
       "scanTimestamp": _dt.datetime.utcnow().isoformat() + "Z",
-      "potential_errors": self._to_potential_errors(final_issues),
+      "potential_errors": self._to_potential_errors(final_issues, spreadsheet_url),
     }
 
   # --- rule-based checks ---
@@ -308,14 +311,19 @@ class MistakeDetector:
     return "#808080"
 
   @classmethod
-  def _to_potential_errors(cls, issues: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+  def _to_potential_errors(cls, issues: List[Dict[str, Any]], spreadsheet_url: str) -> List[Dict[str, Any]]:
     """
     Flatten detailed issues into a simpler structure expected by
     external consumers:
 
     {
       "potential_errors": [
-        { "cell_location": "A1:B10", "message": "...", "color": "#9933FF" }
+        {
+          "cell_location": "A1:B10",
+          "message": "...",
+          "color": "#9933FF",
+          "url": "https://docs.google.com/spreadsheets/d/..."
+        }
       ]
     }
     """
@@ -345,6 +353,7 @@ class MistakeDetector:
               "cell_location": cell_location,
               "message": message,
               "color": color,
+              "url": spreadsheet_url,  # Add spreadsheet URL for color API
               # Enriched metadata so this becomes the single source of truth
               "issue_id": issue.get("id"),
               "category": issue.get("category"),
@@ -371,6 +380,7 @@ class MistakeDetector:
             "cell_location": cell_location,
             "message": message,
             "color": color,
+            "url": spreadsheet_url,  # Add spreadsheet URL for color API
             "issue_id": issue.get("id"),
             "category": issue.get("category"),
             "severity": issue.get("severity"),

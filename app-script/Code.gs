@@ -315,87 +315,93 @@ function generateMessageId() {
  */
 function highlightIssues(issues) {
   if (!issues || issues.length === 0) {
+    Logger.log("No issues to highlight");
     return;
   }
 
   var spreadsheet = SpreadsheetApp.getActiveSpreadsheet();
   var spreadsheetId = spreadsheet.getId();
+  var activeSpreadsheetUrl = spreadsheet.getUrl();
 
-  // Build color payload from issues - only include issues with URL
+  Logger.log("Highlighting " + issues.length + " issue(s)");
+
+  // Build color payload from issues
   var colorPayload = [];
 
   for (var i = 0; i < issues.length; i++) {
     var issue = issues[i];
-    if (issue.cell_location && issue.color && issue.url) {
+
+    // Only require cell_location and color
+    if (issue.cell_location && issue.color) {
       var colorItem = {
         cell_location: issue.cell_location,
         color: issue.color,
         message: issue.title || issue.message || "Issue detected",
-        url: issue.url, // Only use issue URL, no fallback
+        // Use issue URL if provided by backend, otherwise use active spreadsheet URL
+        url: issue.url || activeSpreadsheetUrl,
       };
       colorPayload.push(colorItem);
+
+      Logger.log(
+        "Added issue for highlighting: " +
+          issue.cell_location +
+          " (" +
+          (issue.severity || "unknown severity") +
+          ")"
+      );
+    } else {
+      Logger.log(
+        "Skipping issue without required fields: " +
+          JSON.stringify({
+            has_cell_location: !!issue.cell_location,
+            has_color: !!issue.color,
+            title: issue.title || "(no title)",
+          })
+      );
     }
   }
 
   if (colorPayload.length === 0) {
-    Logger.log("No issues with URL found to highlight");
+    Logger.log("No valid issues to highlight (missing cell_location or color)");
     return;
   }
 
-  // Call color endpoint - send requests grouped by URL
-  var urlGroups = {};
-  for (var j = 0; j < colorPayload.length; j++) {
-    var item = colorPayload[j];
-    if (!urlGroups[item.url]) {
-      urlGroups[item.url] = [];
-    }
-    urlGroups[item.url].push(item);
-  }
+  Logger.log("Prepared " + colorPayload.length + " issue(s) for color API");
 
-  // Store all responses
-  var properties = PropertiesService.getScriptProperties();
-  var allResponses = [];
+  // Call color API with all issues
+  try {
+    var colorResponse = callColorApi(colorPayload);
 
-  // Call API for each URL group
-  for (var url in urlGroups) {
-    var groupPayload = urlGroups[url];
-    try {
-      var colorResponse = callColorApi(groupPayload);
+    if (colorResponse && colorResponse.snapshot_batch_id) {
+      // Store the snapshot batch ID for ALL cell locations
+      var properties = PropertiesService.getScriptProperties();
 
-      if (colorResponse) {
-        // Save the entire response
-        allResponses.push(colorResponse);
+      for (var j = 0; j < colorPayload.length; j++) {
+        var cellLoc = colorPayload[j].cell_location;
+        var responseKey = "color_response_" + spreadsheetId + "_" + cellLoc;
+        properties.setProperty(responseKey, JSON.stringify(colorResponse));
 
-        // Store response data for each cell location in this group
-        for (var k = 0; k < groupPayload.length; k++) {
-          var cellLoc = groupPayload[k].cell_location;
-          var responseKey = "color_response_" + spreadsheetId + "_" + cellLoc;
-          properties.setProperty(responseKey, JSON.stringify(colorResponse));
-
-          // Also store snapshot_batch_id for backward compatibility
-          if (colorResponse.snapshot_batch_id) {
-            var snapshotKey = "snapshot_" + spreadsheetId + "_" + cellLoc;
-            properties.setProperty(
-              snapshotKey,
-              colorResponse.snapshot_batch_id
-            );
-          }
-        }
-
-        Logger.log(
-          "Highlighted " +
-            groupPayload.length +
-            " issue(s) for URL " +
-            url +
-            " with response: " +
-            JSON.stringify(colorResponse)
-        );
+        // Also store snapshot_batch_id for easy access
+        var snapshotKey = "snapshot_" + spreadsheetId + "_" + cellLoc;
+        properties.setProperty(snapshotKey, colorResponse.snapshot_batch_id);
       }
-    } catch (e) {
+
       Logger.log(
-        "Error highlighting issues for URL " + url + ": " + e.toString()
+        "✓ Successfully highlighted " +
+          colorPayload.length +
+          " issue(s) with snapshot_batch_id: " +
+          colorResponse.snapshot_batch_id
+      );
+    } else {
+      Logger.log(
+        "⚠ Color API succeeded but returned no snapshot_batch_id: " +
+          JSON.stringify(colorResponse)
       );
     }
+  } catch (e) {
+    Logger.log("✗ Error highlighting issues: " + e.toString());
+    Logger.log("Error details: " + JSON.stringify(e));
+    // Don't throw - let the chat continue even if highlighting fails
   }
 }
 
@@ -447,12 +453,15 @@ function callColorApi(colorPayload) {
  * @return {Object} Success status
  */
 function ignoreIssue(cellLocation) {
-  Logger.log("Ignoring issue at %s (reverting colors)", cellLocation);
+  Logger.log("═══ IGNORE ISSUE START ═══");
+  Logger.log("Cell location: " + cellLocation);
 
   try {
     var spreadsheet = SpreadsheetApp.getActiveSpreadsheet();
     var spreadsheetId = spreadsheet.getId();
     var properties = PropertiesService.getScriptProperties();
+
+    Logger.log("Spreadsheet ID: " + spreadsheetId);
 
     // Get the saved color response for this cell location
     var responseKey = "color_response_" + spreadsheetId + "_" + cellLocation;
@@ -464,11 +473,9 @@ function ignoreIssue(cellLocation) {
       try {
         var savedResponse = JSON.parse(responseJson);
         snapshotBatchId = savedResponse.snapshot_batch_id;
-        Logger.log(
-          "Found saved color response for " + cellLocation + ": " + responseJson
-        );
+        Logger.log("✓ Found snapshot batch ID: " + snapshotBatchId);
       } catch (e) {
-        Logger.log("Error parsing saved response: " + e.toString());
+        Logger.log("✗ Error parsing saved response: " + e.toString());
       }
     }
 
@@ -476,12 +483,13 @@ function ignoreIssue(cellLocation) {
     if (!snapshotBatchId) {
       var snapshotKey = "snapshot_" + spreadsheetId + "_" + cellLocation;
       snapshotBatchId = properties.getProperty(snapshotKey);
+      if (snapshotBatchId) {
+        Logger.log("✓ Found snapshot batch ID (legacy key): " + snapshotBatchId);
+      }
     }
 
     if (!snapshotBatchId) {
-      Logger.log(
-        "No snapshot_batch_id found for cell location: " + cellLocation
-      );
+      Logger.log("✗ No snapshot_batch_id found for cell location: " + cellLocation);
       return {
         success: false,
         error: "No snapshot found for this cell location",
@@ -489,6 +497,7 @@ function ignoreIssue(cellLocation) {
     }
 
     // Call restore endpoint to revert colors
+    Logger.log("Calling restore API with snapshot batch ID: " + snapshotBatchId);
     var restoreResponse = callRestoreApi(snapshotBatchId, [cellLocation]);
 
     if (restoreResponse && restoreResponse.status === "success") {
@@ -497,20 +506,23 @@ function ignoreIssue(cellLocation) {
       var snapshotKey = "snapshot_" + spreadsheetId + "_" + cellLocation;
       properties.deleteProperty(snapshotKey);
 
-      Logger.log("Successfully restored colors for " + cellLocation);
+      Logger.log("✓ Successfully restored colors for " + cellLocation);
+      Logger.log("═══ IGNORE ISSUE END ═══");
       return {
         success: true,
         message: "Issue ignored, colors restored",
       };
     } else {
-      Logger.log("Restore API returned non-success status");
+      Logger.log("✗ Restore API returned non-success status: " + JSON.stringify(restoreResponse));
       return {
         success: false,
         error: "Failed to restore colors",
       };
     }
   } catch (e) {
-    Logger.log("Error ignoring issue: " + e.toString());
+    Logger.log("✗ Error ignoring issue: " + e.toString());
+    Logger.log("Error stack: " + e.stack);
+    Logger.log("═══ IGNORE ISSUE END ═══");
     return {
       success: false,
       error: e.toString(),
@@ -525,7 +537,8 @@ function ignoreIssue(cellLocation) {
  * @return {Object} Result with success, message, and snapshot_id for undo
  */
 function fixIssueWithAI(issueData) {
-  Logger.log("Fixing issue with AI: " + JSON.stringify(issueData));
+  Logger.log("═══ FIX WITH AI START ═══");
+  Logger.log("Issue data: " + JSON.stringify(issueData));
 
   try {
     var spreadsheet = SpreadsheetApp.getActiveSpreadsheet();
@@ -533,6 +546,10 @@ function fixIssueWithAI(issueData) {
     var spreadsheetUrl = spreadsheet.getUrl();
     var sheetTitle = activeSheet.getName();
     var sessionId = getOrCreateSessionId(spreadsheet.getId());
+
+    Logger.log("Spreadsheet URL: " + spreadsheetUrl);
+    Logger.log("Sheet title: " + sheetTitle);
+    Logger.log("Session ID: " + sessionId);
 
     // Build a specific message for the AI about this issue
     var userMessage =
@@ -557,6 +574,8 @@ function fixIssueWithAI(issueData) {
     userMessage +=
       "\nPlease use the update_cells tool to apply the appropriate fix for this issue.";
 
+    Logger.log("Calling chat API with fix request");
+
     // Call the chat API with the fix request
     var apiResponse = callChatApi(
       userMessage,
@@ -569,18 +588,35 @@ function fixIssueWithAI(issueData) {
     var parsed = parseApiResponse(apiResponse);
     var updateCellsResult = extractUpdateCellsResult(apiResponse);
 
+    Logger.log("Chat API response parsed");
+    Logger.log(
+      "Update cells result: " +
+        (updateCellsResult
+          ? JSON.stringify(updateCellsResult)
+          : "(no update_cells tool was used)")
+    );
+
     if (updateCellsResult && updateCellsResult.snapshot_batch_id) {
       // Store the snapshot ID for undo
       var spreadsheetId = spreadsheet.getId();
       var properties = PropertiesService.getScriptProperties();
       var fixSnapshotKey =
         "fix_snapshot_" + spreadsheetId + "_" + issueData.cell_location;
-      properties.setProperty(fixSnapshotKey, updateCellsResult.snapshot_batch_id);
+      properties.setProperty(
+        fixSnapshotKey,
+        updateCellsResult.snapshot_batch_id
+      );
+
+      Logger.log(
+        "✓ Stored undo snapshot ID: " + updateCellsResult.snapshot_batch_id
+      );
 
       // Now revert the color highlight
+      Logger.log("Removing color highlight");
       ignoreIssue(issueData.cell_location);
 
-      Logger.log("AI fix applied successfully");
+      Logger.log("✓ AI fix applied successfully");
+      Logger.log("═══ FIX WITH AI END ═══");
       return {
         success: true,
         message: parsed.reply || "Fix applied successfully",
@@ -589,6 +625,9 @@ function fixIssueWithAI(issueData) {
       };
     } else {
       // AI responded but didn't use update_cells tool
+      Logger.log("✗ AI did not use update_cells tool");
+      Logger.log("AI response: " + parsed.reply);
+      Logger.log("═══ FIX WITH AI END ═══");
       return {
         success: false,
         message:
@@ -597,7 +636,9 @@ function fixIssueWithAI(issueData) {
       };
     }
   } catch (e) {
-    Logger.log("Error fixing issue with AI: " + e.toString());
+    Logger.log("✗ Error fixing issue with AI: " + e.toString());
+    Logger.log("Error stack: " + e.stack);
+    Logger.log("═══ FIX WITH AI END ═══");
     return {
       success: false,
       error: e.toString(),
@@ -637,43 +678,60 @@ function extractUpdateCellsResult(apiResponse) {
  * @return {Object} Success status
  */
 function undoAIFix(cellLocation) {
-  Logger.log("Undoing AI fix for: " + cellLocation);
+  Logger.log("═══ UNDO AI FIX START ═══");
+  Logger.log("Cell location: " + cellLocation);
 
   try {
     var spreadsheet = SpreadsheetApp.getActiveSpreadsheet();
     var spreadsheetId = spreadsheet.getId();
     var properties = PropertiesService.getScriptProperties();
 
+    Logger.log("Spreadsheet ID: " + spreadsheetId);
+
     var fixSnapshotKey = "fix_snapshot_" + spreadsheetId + "_" + cellLocation;
     var snapshotBatchId = properties.getProperty(fixSnapshotKey);
 
     if (!snapshotBatchId) {
+      Logger.log("✗ No undo snapshot found for this fix");
+      Logger.log("Snapshot key: " + fixSnapshotKey);
+      Logger.log("═══ UNDO AI FIX END ═══");
       return {
         success: false,
         error: "No undo snapshot found for this fix",
       };
     }
 
+    Logger.log("✓ Found undo snapshot batch ID: " + snapshotBatchId);
+
     // Call restore_cells endpoint
+    Logger.log("Calling restore_cells API");
     var restoreResponse = callRestoreCellsApi(snapshotBatchId, [cellLocation]);
 
     if (restoreResponse && restoreResponse.status === "success") {
       // Remove the snapshot reference
       properties.deleteProperty(fixSnapshotKey);
 
-      Logger.log("Successfully undid AI fix for " + cellLocation);
+      Logger.log("✓ Successfully undid AI fix for " + cellLocation);
+      Logger.log("═══ UNDO AI FIX END ═══");
       return {
         success: true,
         message: "Fix undone successfully",
       };
     } else {
+      Logger.log(
+        "✗ Restore cells API returned non-success status: " +
+          JSON.stringify(restoreResponse)
+      );
+      Logger.log("═══ UNDO AI FIX END ═══");
       return {
         success: false,
         error: "Failed to undo fix",
       };
     }
   } catch (e) {
-    Logger.log("Error undoing AI fix: " + e.toString());
+    Logger.log("✗ Error undoing AI fix: " + e.toString());
+    Logger.log("Error stack: " + e.stack);
+    Logger.log("═══ UNDO AI FIX END ═══");
     return {
       success: false,
       error: e.toString(),
