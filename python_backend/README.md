@@ -137,27 +137,31 @@ backend continues to work with in-memory-only conversations.
 
 ## 7. Deploying to Railway
 
-This backend is configured to be deployable to [Railway](https://railway.com) using
-their FastAPI / config-as-code flow.
+This backend can be deployed to [Railway](https://railway.com) using the default
+**Railpack** builder.
 
 - The FastAPI app lives in `python_backend/api.py` as `app`.
-- `railway.json` in the repo root configures Railway to use the Nixpacks builder and
-  start the server with:
+- The repo root contains a `main.py` which simply exposes that app as `app` at
+  the root module level and, when run directly, starts Uvicorn.
+- The root `requirements.txt` includes `python_backend/requirements.txt`, so all
+  backend dependencies (FastAPI, Uvicorn, etc.) are installed.
 
-  ```bash
-  hypercorn python_backend.api:app --bind "[::]:$PORT"
-  ```
+With this setup, Railpack can auto-detect a Python/FastAPI app and start it.
 
-To deploy:
+To deploy with Railpack (default):
 
 1. Push this repository (with the `python_backend` directory) to GitHub or another Git provider.
 2. Create a new **Service** in Railway, connecting it to this repo.
-3. In the service settings, set the **Root Directory** to `.` (the repo root) so Railway
-   sees `railway.json` and `requirements.txt`.
+3. In the service settings:
+   - Set the **Builder** to **Railpack** (default).
+   - Set the **Root Directory** to `.` (the repo root) so Railpack sees
+     `requirements.txt` and `main.py`.
 4. Ensure the required environment variables for this backend are set in Railway
    (see **1. Environment variables** above).
 
-After the first deploy, Railway will build from the root `requirements.txt` (which
-includes `python_backend/requirements.txt`) and start `hypercorn python_backend.api:app`
-on the port defined by `$PORT`. The `/chat` endpoint will be available on the
-Railway-generated URL.
+Railpack will install dependencies from the root `requirements.txt` and either:
+
+- detect FastAPI and run `uvicorn` against `main:app`, or
+- run `python main.py`, which in turn starts Uvicorn on `$PORT`.
+
+Either way, the `/chat` endpoint will be available on the Railway-generated URL.
