@@ -454,24 +454,27 @@ class PROMPTS:
       "- clear_range: Clear cells\n"
       "- add_column: Add a column\n"
       "- rename_column: Rename a column header\n\n"
-      "BE CAREFUL AND PRECISE:\n"
-      "- Double-check cell references in formulas (e.g., =SUM(D2:D7), =C2*D2)\n"
-      "- Verify formula logic matches the data structure\n"
-      "- Use batch_update for efficiency when setting multiple cells\n"
-      "- Keep responses concise - typically 1-2 actions total\n\n"
-      "KEEP TABLES SIMPLE:\n"
-      "- Use ONLY essential columns (Month, Role, Salary, etc.)\n"
-      "- NO extra columns like Phase, Focus Area, Notes, Headcount, etc.\n"
-      "- Include salaries and formulas\n"
-      "- Add a summary section with SUM formulas\n\n"
-      "EXAMPLE - Hiring plan table:\n"
-      "User asks: \"Create a simple hiring plan\"\n\n"
-      "Good response (simple table with salaries and formulas):\n"
+      "🚨 CRITICAL TABLE REQUIREMENTS:\n"
+      "1. MUST include a 'Salary' column with actual dollar amounts (e.g., 8000, 7500)\n"
+      "2. MUST include formulas (e.g., =C2*D2 for costs, =SUM(D2:D5) for totals)\n"
+      "3. ONLY use these columns: Month, Role, Salary, Cost (or similar essential data)\n"
+      "4. FORBIDDEN columns: Target Headcount, New Hires, Key Roles, Notes, Phase, Focus Area\n\n"
+      "❌ BAD EXAMPLE (NO SALARIES!):\n"
+      "Month | Target Headcount | New Hires | Key Roles | Notes  ← WRONG! No salary column!\n"
+      "1     | 2               | 1         | ML Engineer | Founder + first hire\n"
+      "2     | 3               | 1         | Backend Eng | Infrastructure\n\n"
+      "✅ GOOD EXAMPLE (HAS SALARIES AND FORMULAS!):\n"
+      "Month | Role            | Headcount | Salary | Cost\n"
+      "1     | CTO             | 1         | 8000   | =C2*D2\n"
+      "2     | ML Engineer     | 1         | 8400   | =C3*D3\n"
+      "3     | Full-Stack Eng  | 1         | 7500   | =C4*D4\n"
+      "SUMMARY\n"
+      "Total Cost: =SUM(D2:D4)\n\n"
+      "IMPLEMENTATION:\n"
       "{\n"
-      '  "intent": "Create simple hiring table with salaries and summary",\n'
+      '  "intent": "Create hiring table with salaries and formulas",\n'
       '  "actions": [{\n'
       '    "type": "batch_update",\n'
-      '    "description": "Create table with Month, Role, Salary, Cost and summary",\n'
       '    "params": {\n'
       '      "updates": [\n'
       '        {cell: "A1", value: "Month"},\n'
@@ -479,34 +482,19 @@ class PROMPTS:
       '        {cell: "C1", value: "Headcount"},\n'
       '        {cell: "D1", value: "Salary"},\n'
       '        {cell: "E1", value: "Cost"},\n'
-      '        {cell: "A2", value: 1},\n'
-      '        {cell: "B2", value: "CTO"},\n'
-      '        {cell: "C2", value: 1},\n'
-      '        {cell: "D2", value: 8000},\n'
+      '        {cell: "A2", value: 1}, {cell: "B2", value: "CTO"},\n'
+      '        {cell: "C2", value: 1}, {cell: "D2", value: 8000},\n'
       '        {cell: "E2", value: "=C2*D2", is_formula: true},\n'
-      '        {cell: "A3", value: 2},\n'
-      '        {cell: "B3", value: "ML Engineer"},\n'
-      '        {cell: "C3", value: 1},\n'
-      '        {cell: "D3", value: 8400},\n'
+      '        {cell: "A3", value: 2}, {cell: "B3", value: "ML Engineer"},\n'
+      '        {cell: "C3", value: 1}, {cell: "D3", value: 8400},\n'
       '        {cell: "E3", value: "=C3*D3", is_formula: true},\n'
-      '        {cell: "A4", value: 3},\n'
-      '        {cell: "B4", value: "Full-Stack Engineer"},\n'
-      '        {cell: "C4", value: 1},\n'
-      '        {cell: "D4", value: 7500},\n'
+      '        {cell: "A4", value: 3}, {cell: "B4", value: "Full-Stack Engineer"},\n'
+      '        {cell: "C4", value: 1}, {cell: "D4", value: 7500},\n'
       '        {cell: "E4", value: "=C4*D4", is_formula: true},\n'
-      '        {cell: "A5", value: 4},\n'
-      '        {cell: "B5", value: "Product Manager"},\n'
-      '        {cell: "C5", value: 1},\n'
-      '        {cell: "D5", value: 7000},\n'
-      '        {cell: "E5", value: "=C5*D5", is_formula: true},\n'
-      '        {cell: "A7", value: "SUMMARY"},\n'
-      '        {cell: "A8", value: "Total Monthly Cost"},\n'
-      '        {cell: "B8", value: "=SUM(D2:D5)", is_formula: true},\n'
-      '        {cell: "A9", value: "Total Headcount"},\n'
-      '        {cell: "B9", value: "=SUM(C2:C5)", is_formula: true}\n'
-      "      ]\n"
-      "    },\n"
-      '    "affectedRange": "A1:E9"\n'
+      '        {cell: "A6", value: "SUMMARY"},\n'
+      '        {cell: "A7", value: "Total Cost"},\n'
+      '        {cell: "B7", value: "=SUM(D2:D4)", is_formula: true}\n'
+      "      ]}\n"
       "  }]\n"
       "}\n\n"
       "Return JSON with this structure:\n"
