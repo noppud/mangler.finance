@@ -138,16 +138,10 @@ class AgentOrchestrator:
 
         config_dict = args.get("config") or {}
         config = {
-          "enableRuleBased": config_dict.get("includeRuleBased", True),
+          "enableRuleBased": config_dict.get("includeRuleBased", False),  # Disabled for debugging
           "enableLLMBased": config_dict.get("includeLLMBased", True),
           "minSeverity": "info",
-          "categoriesToCheck": [
-            "formula_error",
-            "inconsistent_formula",
-            "type_mismatch",
-            "missing_value",
-            "duplicate_key",
-          ],
+          "categoriesToCheck": [],  # Disabled temporarily for debugging LLM-based detection
         }
 
         result = self.mistake_detector.detect_issues(spreadsheet_id, sheet_title, config)
