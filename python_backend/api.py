@@ -2207,18 +2207,63 @@ async def register_tester(request: RegisterTesterRequest) -> Dict[str, Any]:
     """
     Ensure the authenticated user is present in the OAuth consent screen test user list.
     """
+    logger.info(
+        "[register-tester] Endpoint called",
+        extra={"user_email": request.user_email}
+    )
+
     if not request.user_email:
+        logger.error("[register-tester] Missing user_email in request")
         raise HTTPException(status_code=400, detail="user_email is required")
 
     try:
         from .oauth_consent_manager import OAuthConsentManager
 
+        logger.info(
+            "[register-tester] Initializing OAuthConsentManager for user: %s",
+            request.user_email,
+            extra={"user_email": request.user_email}
+        )
+
         manager = OAuthConsentManager()
-        return manager.ensure_test_user(request.user_email)
+
+        logger.info(
+            "[register-tester] Calling ensure_test_user for: %s",
+            request.user_email,
+            extra={"user_email": request.user_email}
+        )
+
+        result = manager.ensure_test_user(request.user_email)
+
+        logger.info(
+            "[register-tester] Successfully registered tester: %s, added=%s",
+            request.user_email,
+            result.get("added"),
+            extra={
+                "user_email": request.user_email,
+                "added": result.get("added"),
+                "total_testers": len(result.get("testUsers", [])),
+            }
+        )
+
+        return result
+
     except HTTPException:
         raise
+    except ValueError as exc:
+        logger.error(
+            "[register-tester] ValueError during registration: %s",
+            str(exc),
+            extra={"user_email": request.user_email, "error": str(exc)}
+        )
+        raise HTTPException(status_code=500, detail=str(exc))
     except Exception as exc:
-        logger.error(f"Error registering OAuth tester: {exc}")
+        logger.error(
+            "[register-tester] Unexpected error registering OAuth tester: %s",
+            str(exc),
+            exc_info=True,
+            extra={"user_email": request.user_email, "error_type": type(exc).__name__}
+        )
         raise HTTPException(status_code=500, detail=str(exc))
 
 

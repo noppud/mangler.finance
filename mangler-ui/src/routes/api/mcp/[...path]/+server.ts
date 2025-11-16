@@ -1,21 +1,25 @@
 import type { RequestHandler } from './$types';
 import { env } from '$env/dynamic/private';
+import { kindeAuthClient, type SessionManager } from '@kinde-oss/kinde-auth-sveltekit';
 
 const BACKEND_URL = env.BACKEND_URL || 'https://fintech-hackathon-production.up.railway.app';
 
-export const GET: RequestHandler = async ({ request, params, locals }) => {
-  const session = await locals.getKindeSession();
-  if (!session?.user) {
+export const GET: RequestHandler = async ({ request, params }) => {
+  const sessionManager = request as unknown as SessionManager;
+  const isAuthenticated = await kindeAuthClient.isAuthenticated(sessionManager);
+
+  if (!isAuthenticated) {
     return new Response('Unauthorized', { status: 401 });
   }
 
+  const token = await kindeAuthClient.getToken(sessionManager);
   const path = params.path;
   const url = `${BACKEND_URL}/mcp/${path}`;
 
   try {
     const response = await fetch(url, {
       headers: {
-        'Authorization': `Bearer ${session.accessToken}`,
+        'Authorization': `Bearer ${token}`,
       },
     });
 
@@ -32,12 +36,15 @@ export const GET: RequestHandler = async ({ request, params, locals }) => {
   }
 };
 
-export const POST: RequestHandler = async ({ request, params, locals }) => {
-  const session = await locals.getKindeSession();
-  if (!session?.user) {
+export const POST: RequestHandler = async ({ request, params }) => {
+  const sessionManager = request as unknown as SessionManager;
+  const isAuthenticated = await kindeAuthClient.isAuthenticated(sessionManager);
+
+  if (!isAuthenticated) {
     return new Response('Unauthorized', { status: 401 });
   }
 
+  const token = await kindeAuthClient.getToken(sessionManager);
   const path = params.path;
   const url = `${BACKEND_URL}/mcp/${path}`;
   const body = await request.text();
@@ -46,7 +53,7 @@ export const POST: RequestHandler = async ({ request, params, locals }) => {
     const response = await fetch(url, {
       method: 'POST',
       headers: {
-        'Authorization': `Bearer ${session.accessToken}`,
+        'Authorization': `Bearer ${token}`,
         'Content-Type': 'application/json',
       },
       body,
@@ -65,12 +72,15 @@ export const POST: RequestHandler = async ({ request, params, locals }) => {
   }
 };
 
-export const PATCH: RequestHandler = async ({ request, params, locals }) => {
-  const session = await locals.getKindeSession();
-  if (!session?.user) {
+export const PATCH: RequestHandler = async ({ request, params }) => {
+  const sessionManager = request as unknown as SessionManager;
+  const isAuthenticated = await kindeAuthClient.isAuthenticated(sessionManager);
+
+  if (!isAuthenticated) {
     return new Response('Unauthorized', { status: 401 });
   }
 
+  const token = await kindeAuthClient.getToken(sessionManager);
   const path = params.path;
   const url = `${BACKEND_URL}/mcp/${path}`;
   const body = await request.text();
@@ -79,7 +89,7 @@ export const PATCH: RequestHandler = async ({ request, params, locals }) => {
     const response = await fetch(url, {
       method: 'PATCH',
       headers: {
-        'Authorization': `Bearer ${session.accessToken}`,
+        'Authorization': `Bearer ${token}`,
         'Content-Type': 'application/json',
       },
       body,
@@ -98,12 +108,15 @@ export const PATCH: RequestHandler = async ({ request, params, locals }) => {
   }
 };
 
-export const DELETE: RequestHandler = async ({ request, params, locals }) => {
-  const session = await locals.getKindeSession();
-  if (!session?.user) {
+export const DELETE: RequestHandler = async ({ request, params }) => {
+  const sessionManager = request as unknown as SessionManager;
+  const isAuthenticated = await kindeAuthClient.isAuthenticated(sessionManager);
+
+  if (!isAuthenticated) {
     return new Response('Unauthorized', { status: 401 });
   }
 
+  const token = await kindeAuthClient.getToken(sessionManager);
   const path = params.path;
   const url = `${BACKEND_URL}/mcp/${path}`;
 
@@ -111,7 +124,7 @@ export const DELETE: RequestHandler = async ({ request, params, locals }) => {
     const response = await fetch(url, {
       method: 'DELETE',
       headers: {
-        'Authorization': `Bearer ${session.accessToken}`,
+        'Authorization': `Bearer ${token}`,
       },
     });
 
