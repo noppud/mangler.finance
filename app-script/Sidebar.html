@@ -19,7 +19,8 @@
       .copilot-container {
         display: flex;
         flex-direction: column;
-        height: 100vh;
+        /* --- UPDATED: This is the fix --- */
+        height: 100%; /* Was 100vh, which caused the cutoff */
         box-sizing: border-box;
         background: #ffffff; /* Clean white container */
       }
@@ -100,7 +101,7 @@
         background: #ffffff;
       }
 
-      /* --- NEW: Custom Scrollbar --- */
+      /* --- Custom Scrollbar --- */
       .chat-window::-webkit-scrollbar {
         width: 6px;
       }
@@ -155,7 +156,7 @@
         border-bottom-left-radius: 2px;
       }
 
-      /* --- NEW: AI Typing Indicator --- */
+      /* --- AI Typing Indicator --- */
       .chat-bubble--typing {
         padding: 14px 16px; /* A bit more padding for the dots */
       }
@@ -210,7 +211,6 @@
       .input-row textarea {
         flex: 1;
         resize: none; /* No resize handle */
-        /* --- UPDATED: Taller min-height --- */
         min-height: 42px; /* Match button height */
         max-height: 140px;
         padding: 10px 14px;
@@ -538,6 +538,8 @@
         document.addEventListener("DOMContentLoaded", function () {
           loadSpreadsheetInfo();
           setInitialButtonState();
+          // Ensure the input is visible on load by setting initial height
+          autoGrow(inputEl);
         });
 
         function setInitialButtonState() {
@@ -547,7 +549,8 @@
 
         /* --- Auto-resize textarea --- */
         function autoGrow(element) {
-          element.style.height = "5px"; // Reset height
+          // Set to a small height to correctly calculate scrollHeight
+          element.style.height = "auto";
           element.style.height = element.scrollHeight + "px";
         }
         inputEl.addEventListener("input", () => autoGrow(inputEl));
@@ -578,9 +581,8 @@
 
           // Create message parts
           var parts = [
-            document.createTextNode("Hi, I'm your spreadsheet Mangler.\n\n"),
+            document.createTextNode("Hi, I'm your spreadSheet Mangler.\n\n"),
           ];
-
           // Closing message
           parts.push(
             document.createTextNode(

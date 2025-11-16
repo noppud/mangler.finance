@@ -124,10 +124,28 @@ class LLMClient:
     """
     Send a request expecting a JSON response string. Handles the case where the
     model wraps JSON in markdown code fences.
+
+    Enhanced with robust error handling and validation.
     """
     content = self.chat_text(messages, overrides)
 
+    # Validate that we got some content
+    if not content or not content.strip():
+      logger.error(
+        "LLM returned empty content when JSON was expected",
+        extra={"messages_count": len(messages)}
+      )
+      raise RuntimeError(
+        "Failed to parse LLM response as JSON: Empty response received\n"
+        "This may indicate the LLM failed to generate output or hit a token limit.\n"
+        "Consider:\n"
+        "1. Simplifying your request\n"
+        "2. Reducing the amount of context provided\n"
+        "3. Breaking the task into smaller steps"
+      )
+
     json_str = content.strip()
+
     # Extract JSON from markdown code blocks if present
     if "```" in json_str:
       try:
@@ -143,10 +161,56 @@ class LLMClient:
         # Fallback to original content
         pass
 
+    # Additional validation: check if response looks like JSON
+    if not (json_str.startswith("{") or json_str.startswith("[")):
+      logger.warning(
+        "LLM response doesn't start with { or [ - may not be valid JSON",
+        extra={"first_100_chars": json_str[:100]}
+      )
+      # Try to find the first { or [
+      for char in ["{", "["]:
+        if char in json_str:
+          start_idx = json_str.index(char)
+          logger.info(f"Found JSON start at position {start_idx}, extracting...")
+          json_str = json_str[start_idx:]
+          break
+
     try:
-      return json.loads(json_str)
+      parsed = json.loads(json_str)
+
+      # Validate that we got a meaningful structure
+      if isinstance(parsed, dict):
+        # Check for common required fields based on context
+        if "actions" in parsed and not isinstance(parsed["actions"], list):
+          logger.warning("Parsed JSON has 'actions' field but it's not a list")
+
+      return parsed
+
     except json.JSONDecodeError as exc:
-      raise RuntimeError(f"Failed to parse LLM response as JSON: {exc}\nContent was:\n{content}") from exc
+      # Enhanced error message with debugging info
+      logger.error(
+        f"JSON parsing failed: {exc}",
+        extra={
+          "error_line": exc.lineno,
+          "error_col": exc.colno,
+          "error_msg": exc.msg,
+          "content_length": len(content),
+          "json_str_length": len(json_str),
+        }
+      )
+
+      # Provide detailed error message
+      error_context = json_str[max(0, exc.pos - 50):min(len(json_str), exc.pos + 50)]
+      raise RuntimeError(
+        f"Failed to parse LLM response as JSON: {exc}\n"
+        f"Error at line {exc.lineno}, column {exc.colno}: {exc.msg}\n"
+        f"Context around error: ...{error_context}...\n\n"
+        f"Full content was:\n{content}\n\n"
+        f"Suggestions:\n"
+        f"1. The LLM may have generated invalid JSON - try again\n"
+        f"2. Check if the response is too long (current: {len(content)} chars)\n"
+        f"3. Simplify your request to reduce complexity"
+      ) from exc
 
 
 def _load_env_from_local_files() -> None:
@@ -281,19 +345,44 @@ class PROMPTS:
   class MODIFICATION_PLAN:
     system: str = (
       "You are an expert spreadsheet automation assistant. Your task is to interpret user requests "
-      "and create a detailed plan of actions to modify a Google Sheet. You can't ask for confirmation\n\n"
+      "and create a detailed plan of actions to modify a Google Sheet. You can't ask for confirmation.\n\n"
+      "CRITICAL CONSTRAINTS:\n"
+      "- You MUST work with the CURRENT SHEET ONLY - NEVER create or delete sheets\n"
+      "- ALWAYS prefer batch operations over individual actions\n"
+      "- Keep action count MINIMAL - if you have >10 individual actions, you MUST use batch_update instead\n"
+      "- Be EFFICIENT: One batch_update with 20 cells is better than 20 set_value actions\n\n"
       "Available actions:\n"
-      "- add_column: Add a new column\n"
-      "- remove_column: Remove a column\n"
+      "- batch_update: PREFERRED for multi-cell operations (values, formulas, or mixed)\n"
+      "  Use this for: setting up tables, filling multiple cells, creating complex layouts\n"
+      "  params: { updates: [{cell: \"A1\", value: \"text\", is_formula: false}, ...] }\n"
+      "- add_column: Add a new column (use sparingly)\n"
       "- rename_column: Rename a column header\n"
-      "- update_formula: Update or add formulas\n"
-      "- normalize_data: Clean and standardize data\n"
-      "- reformat_cells: Change formatting\n"
-      "- add_validation: Add data validation rules\n"
-      "- fix_error: Fix specific errors\n"
-      "- sort_range: Sort data\n"
-      "- set_value: Set specific cell values\n"
-      "- clear_range: Clear a range of cells\n\n"
+      "- update_formula: Update formulas (use for single formula or formula patterns)\n"
+      "- set_value: Set a SINGLE cell value (only use if truly just 1-2 cells)\n"
+      "- clear_range: Clear a range of cells\n"
+      "- normalize_data: Clean and standardize data in bulk\n"
+      "- reformat_cells: Change formatting for ranges\n\n"
+      "ACTION SELECTION RULES:\n"
+      "1. Setting up a table/simulation with many cells? → Use batch_update\n"
+      "2. Updating 3+ cells with values/formulas? → Use batch_update\n"
+      "3. Creating headers + data rows? → Use batch_update\n"
+      "4. Formatting many cells? → Use reformat_cells with ranges\n"
+      "5. Truly updating just 1-2 cells? → Use set_value\n\n"
+      "EXAMPLES:\n"
+      "❌ BAD (38 actions for a simple table):\n"
+      "  [{type: \"set_value\", params: {cell: \"A1\", value: \"Title\"}}, \n"
+      "   {type: \"set_value\", params: {cell: \"A3\", value: \"Input\"}}, \n"
+      "   {type: \"set_value\", params: {cell: \"A4\", value: \"Hours\"}}, ...]\n\n"
+      "✅ GOOD (1-2 actions for the same table):\n"
+      "  [{type: \"batch_update\", params: {updates: [\n"
+      "    {cell: \"A1\", value: \"IT Consultant Earnings - Sweden\"},\n"
+      "    {cell: \"A3\", value: \"Input Variables\"},\n"
+      "    {cell: \"A4\", value: \"Hours per week\"}, {cell: \"B4\", value: 40},\n"
+      "    {cell: \"A5\", value: \"Weeks per year\"}, {cell: \"B5\", value: 50},\n"
+      "    {cell: \"B6\", value: \"=B4*B5\", is_formula: true},\n"
+      "    ...\n"
+      "  ]}},\n"
+      "  {type: \"reformat_cells\", params: {range: \"A1\", bold: true, fontSize: 16}}]\n\n"
       "Return a JSON plan with:\n"
       "{\n"
       '  "intent": "brief description of what user wants",\n'
@@ -360,10 +449,14 @@ class PROMPTS:
   class AGENT:
     system: str = (
       "You are Sheet Mangler, an AI assistant for working with Google Sheets. You help users detect issues, "
-      "modify existing sheets, and create new spreadsheets through a conversational interface.\n\n"
-      "You have six tools: detect_issues, modify_sheet, create_sheet, update_cells, read_sheet, visualize_formulas.\n\n"
-      "**update_cells** is specifically for fixing detected issues by updating cell values, formulas, or clearing broken references. "
-      "Use this tool when the user asks to fix specific issues or when you have detected issues and want to apply targeted fixes.\n\n"
+      "modify existing sheets through a conversational interface. You can ONLY work with the CURRENT sheet - "
+      "you CANNOT create new sheets or delete sheets.\n\n"
+      "You have six tools: detect_issues, modify_sheet, update_cells, read_sheet, visualize_formulas.\n\n"
+      "**modify_sheet** is the PREFERRED tool for creating complex layouts, tables, or simulations. "
+      "It now uses efficient batch operations internally, so it can handle large setups (20+ cells) efficiently. "
+      "Use this for: creating tables, setting up simulations, restructuring data, adding multiple formulas.\n\n"
+      "**update_cells** is for targeted fixes - updating specific cells when you already know exactly what to change. "
+      "Use this for: fixing detected issues, correcting specific values, updating individual formulas.\n\n"
       "**read_sheet** reads the current values AND formulas from a sheet range. Use this when you need to examine specific data, "
       "understand formulas, or answer questions about the sheet contents that aren't covered by the context provided.\n\n"
       "**visualize_formulas** color-codes cells on a sheet to visually distinguish formulas (green) from hard-coded numeric values (orange). "
@@ -411,9 +504,15 @@ class PROMPTS:
       "  - You need to see data/formulas to answer ANY question about the sheet\n"
       "  - IMPORTANT: If you've already used read_sheet in this conversation, check the conversation history for the data - DO NOT call read_sheet again unless the user asks for updated data\n"
       "- Use **detect_issues** when user explicitly asks to find/detect/analyze issues or errors\n"
-      "- Use **update_cells** for: fixing broken references, correcting phone numbers, renaming columns, fixing formulas, clearing error cells, correcting obvious data entry errors\n"
-      "- Use **modify_sheet** for: complex modifications requiring planning, restructuring data, adding validation rules\n"
-      "- Use **create_sheet** to create new spreadsheets\n"
+      "- Use **modify_sheet** for: \n"
+      "  - Creating tables, layouts, or simulations with many cells (uses efficient batching)\n"
+      "  - Setting up complex structures with headers, formulas, and data\n"
+      "  - Restructuring data or adding validation rules\n"
+      "  - Any task requiring 10+ cell modifications\n"
+      "- Use **update_cells** for: \n"
+      "  - Fixing specific detected issues (broken references, data entry errors)\n"
+      "  - Targeted updates to 1-5 known cells\n"
+      "  - Correcting phone numbers, fixing formulas, clearing error cells\n"
       "- Use **visualize_formulas** when user wants to see/highlight which cells are formulas vs hardcoded values, or when helping debug formula patterns\n\n"
       "**CRITICAL - ANSWERING WITH PREVIOUS DATA:**\n"
       "- When you've already called read_sheet or detect_issues earlier in the conversation, the tool results are in the conversation history\n"

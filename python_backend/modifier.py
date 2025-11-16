@@ -111,6 +111,37 @@ class SheetModifier:
     }
 
   def _validate_plan(self, plan: Dict[str, Any], constraints: Optional[Dict[str, Any]]) -> None:
+    """
+    Validate the plan against constraints and check for inefficient patterns.
+
+    This includes:
+    - Checking row/column limits
+    - Preventing destructive actions if not allowed
+    - Detecting inefficient action patterns (too many individual set_value actions)
+    - Warning about unsupported operations
+    """
+    actions = plan.get("actions") or []
+
+    # Check for inefficient patterns: too many individual set_value actions
+    set_value_count = sum(1 for action in actions if action.get("type") == "set_value")
+    if set_value_count > 10:
+      raise ValueError(
+        f"Plan contains {set_value_count} individual set_value actions. "
+        f"This is inefficient - please use batch_update instead for updating multiple cells. "
+        f"Batch operations are faster, more reliable, and reduce API calls."
+      )
+
+    # Check for unsupported action types that might cause issues
+    unsupported_patterns = ["create_sheet", "delete_sheet", "add_sheet", "remove_sheet"]
+    for action in actions:
+      action_type = action.get("type", "")
+      if any(pattern in action_type for pattern in unsupported_patterns):
+        raise ValueError(
+          f"Action type '{action_type}' is not supported. "
+          f"This tool can only modify the CURRENT sheet - it cannot create or delete sheets."
+        )
+
+    # Apply user-provided constraints if present
     if not constraints:
       return
 
@@ -139,7 +170,9 @@ class SheetModifier:
     action: Dict[str, Any],
   ) -> None:
     action_type = action.get("type")
-    if action_type == "add_column":
+    if action_type == "batch_update":
+      self._execute_batch_update(spreadsheet_id, sheet_title, action)
+    elif action_type == "add_column":
       self._execute_add_column(spreadsheet_id, sheet_title, action)
     elif action_type == "rename_column":
       self._execute_rename_column(spreadsheet_id, sheet_title, action)
@@ -153,6 +186,81 @@ class SheetModifier:
       self._execute_normalize_data(spreadsheet_id, sheet_title, action)
     else:
       raise ValueError(f"Unsupported action type: {action_type}")
+
+  def _execute_batch_update(
+    self,
+    spreadsheet_id: str,
+    sheet_title: str,
+    action: Dict[str, Any],
+  ) -> None:
+    """
+    Execute a batch update of multiple cells at once.
+
+    This is the preferred method for updating many cells efficiently.
+    Uses Google Sheets batchUpdate API to minimize API calls.
+
+    Params:
+      updates: List of cell updates, each with:
+        - cell: A1 notation (e.g., "A1", "B5")
+        - value: The value to set (string, number, boolean, or formula)
+        - is_formula: Optional boolean (default: False), set to True for formulas
+
+    Example:
+      {
+        "type": "batch_update",
+        "params": {
+          "updates": [
+            {"cell": "A1", "value": "Title", "is_formula": false},
+            {"cell": "B2", "value": 100},
+            {"cell": "C3", "value": "=A1+B2", "is_formula": true}
+          ]
+        }
+      }
+    """
+    params = action.get("params") or {}
+    updates = params.get("updates") or []
+
+    if not updates:
+      raise ValueError("batch_update requires params.updates list")
+
+    # Build batch data for Google Sheets API
+    batch_data: List[Dict[str, Any]] = []
+
+    for update in updates:
+      cell = update.get("cell")
+      value = update.get("value")
+      is_formula = update.get("is_formula", False)
+
+      if not cell:
+        raise ValueError("Each update must have a 'cell' field with A1 notation")
+
+      # Determine value input option
+      value_input_option = "USER_ENTERED" if is_formula else "RAW"
+
+      # Prepare the cell range
+      cell_range = f"{sheet_title}!{cell}"
+
+      # Handle None/null values as empty strings
+      if value is None:
+        value_to_write = [[""]]
+      else:
+        value_to_write = [[value]]
+
+      batch_data.append({
+        "range": cell_range,
+        "values": value_to_write,
+      })
+
+    # Execute batch update via Sheets client
+    if batch_data:
+      # Use the sheets client's service to perform batch update
+      self.sheets_client.service.spreadsheets().values().batchUpdate(
+        spreadsheetId=spreadsheet_id,
+        body={
+          "valueInputOption": "USER_ENTERED",  # This handles both formulas and values correctly
+          "data": batch_data,
+        },
+      ).execute()
 
   def _execute_add_column(
     self,
