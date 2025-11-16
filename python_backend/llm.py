@@ -479,14 +479,29 @@ def format_sheet_context(context: Any) -> str:
 def format_sample_data(sample_data: Any) -> str:
   """
   Helper to format sample data for LLM (ported from TS).
+  Includes both formulas and values when available.
   """
   if not sample_data:
     return "No data"
 
   formatted = ""
   for idx, row in enumerate(sample_data):
-    # In our context builder, each cell is a dict with a 'value'
-    values = [json.dumps((cell or {}).get("value", "")) for cell in row]
-    formatted += f"Row {idx + 1}: " + " | ".join(values) + "\n"
+    # Format each cell: show formula if present, then value
+    cell_strings = []
+    for cell in row:
+      cell_dict = cell or {}
+      formula = cell_dict.get("formula")
+      value = cell_dict.get("value", "")
+      
+      if formula:
+        # Show formula and its result: "=SUM(A1:A5) → 100"
+        cell_str = f"{formula} → {json.dumps(value)}"
+      else:
+        # Just show the value
+        cell_str = json.dumps(value)
+      
+      cell_strings.append(cell_str)
+    
+    formatted += f"Row {idx + 1}: " + " | ".join(cell_strings) + "\n"
 
   return formatted

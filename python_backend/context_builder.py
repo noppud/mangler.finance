@@ -31,7 +31,7 @@ class ContextBuilder:
 
     table_regions = self._detect_table_regions(data)
     summary = self._generate_summary(data)
-    sample_data = self._sample_data(data, top_n=10)
+    sample_data = self._sample_data(data, top_n=150)
 
     return {
       "metadata": metadata,
