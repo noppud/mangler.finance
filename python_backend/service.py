@@ -47,33 +47,45 @@ class ChatService:
 
   def chat(self, request: ChatRequest) -> ChatResponse:
     """
-    Handle a ChatRequest that already contains a full message history.
+    Handle a ChatRequest that may contain partial or full message history.
 
     This method loads any historical messages from Supabase on first access,
-    then forwards the request to the backend, and records the returned messages.
+    merges them with incoming messages, forwards the complete history to the backend,
+    and records the returned messages.
     """
     # Load historical context from Supabase if this is the first time we're seeing this session
     if request.sessionId:
       self._ensure_history_loaded(request.sessionId)
 
-    response = self.backend.send_chat(request)
+    # Get the stored history (includes loaded Supabase messages)
+    history = self.store.get_history(request.sessionId) if request.sessionId else []
+
+    # Merge stored history with incoming messages (avoiding duplicates)
+    seen_ids = {msg.id for msg in history}
+    new_request_messages = [m for m in request.messages if m.id not in seen_ids]
+
+    # Create the complete message history: stored history + new messages
+    full_history = history + new_request_messages
+
+    # Create a new request with the complete history
+    full_request = ChatRequest(
+      messages=full_history,
+      sheetContext=request.sheetContext,
+      sessionId=request.sessionId,
+    )
+
+    # Send the complete history to the backend
+    response = self.backend.send_chat(full_request)
 
     if request.sessionId:
       session_id = request.sessionId
 
-      # Store both the request history and the new messages.
-      # The client is expected to send the full history in request.messages,
-      # so we use the existing in-memory history to detect which messages are new.
-      history = self.store.get_history(session_id)
-      seen_ids = {msg.id for msg in history}
-
-      new_request_messages = [m for m in request.messages if m.id not in seen_ids]
-      combined = request.messages + response.messages
-
+      # Store the complete conversation: full history + new responses
+      combined = full_history + response.messages
       self.store.set_history(session_id, combined)
 
       if self._logger.enabled:
-        # Persist only newly seen request messages plus this turn's responses.
+        # Persist only newly seen request messages plus this turn's responses
         self._logger.log_messages(
           session_id,
           list(new_request_messages) + list(response.messages),
