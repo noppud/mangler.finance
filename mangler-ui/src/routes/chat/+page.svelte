@@ -30,6 +30,13 @@
 	let issues: Issue[] = [];
 	let streamController: AbortController | null = null;
 
+	function removeTypingPlaceholder() {
+		const last = messages[messages.length - 1];
+		if (last && last.role === 'assistant' && !last.content) {
+			messages = messages.slice(0, -1);
+		}
+	}
+
 	// Generate unique IDs
 	function generateMessageId(): string {
 		return `msg_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
@@ -95,12 +102,20 @@
 
 								case 'content':
 									if (!currentAssistantMessage) {
-										currentAssistantMessage = {
-											id: chunk.messageId || generateMessageId(),
-											role: 'assistant',
-											content: chunk.content
-										};
-										messages = [...messages, currentAssistantMessage];
+										const last = messages[messages.length - 1];
+										if (last && last.role === 'assistant' && !last.content) {
+											currentAssistantMessage = last;
+											currentAssistantMessage.id = chunk.messageId || currentAssistantMessage.id;
+											currentAssistantMessage.content = chunk.content;
+											messages = [...messages.slice(0, -1), currentAssistantMessage];
+										} else {
+											currentAssistantMessage = {
+												id: chunk.messageId || generateMessageId(),
+												role: 'assistant',
+												content: chunk.content
+											};
+											messages = [...messages, currentAssistantMessage];
+										}
 										isTyping = true;
 									} else {
 										currentAssistantMessage.content = (currentAssistantMessage.content || '') + chunk.content;
@@ -148,6 +163,14 @@
 			content: text
 		};
 		messages = [...messages, userMessage];
+
+		// Add placeholder assistant message for typing indicator
+		const typingMessage: Message = {
+			id: generateMessageId(),
+			role: 'assistant',
+			content: ''
+		};
+		messages = [...messages, typingMessage];
 
 		// Clear input and show loading
 		inputText = '';
@@ -204,6 +227,7 @@
 			await handleStreamResponse(response);
 		} catch (error: any) {
 			isTyping = false; // Ensure typing indicator is removed
+			removeTypingPlaceholder();
 			if (error.name === 'AbortError') {
 				console.log('Stream aborted');
 				// Add a user-friendly message for timeout
@@ -223,6 +247,7 @@
 		} finally {
 			isLoading = false;
 			isTyping = false;
+			removeTypingPlaceholder();
 			streamController = null;
 		}
 	}

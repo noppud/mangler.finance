@@ -17,6 +17,7 @@ from importlib import resources
 from fastapi import FastAPI, HTTPException, Request, Response
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse, StreamingResponse, HTMLResponse, FileResponse
+from fastapi.encoders import jsonable_encoder
 from pydantic import BaseModel
 from google.oauth2.credentials import Credentials as OAuthCredentials
 import asyncio
@@ -496,7 +497,7 @@ async def stream_chat_response(request: ChatRequest) -> AsyncIterator[str]:
                 # Stream tool messages immediately
                 chunk = {
                     'type': 'tool',
-                    'metadata': msg.metadata,
+                    'metadata': jsonable_encoder(msg.metadata),
                     'messageId': msg.id
                 }
                 yield f"data: {json.dumps(chunk)}\n\n"
