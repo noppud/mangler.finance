@@ -16,9 +16,11 @@ from importlib import resources
 
 from fastapi import FastAPI, HTTPException, Request, Response
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import JSONResponse
+from fastapi.responses import JSONResponse, StreamingResponse
 from pydantic import BaseModel
 from google.oauth2.credentials import Credentials as OAuthCredentials
+import asyncio
+from typing import AsyncIterator
 
 from .backend import PythonChatBackend
 from .logging_config import get_logger
@@ -443,6 +445,81 @@ async def chat(request: ChatRequest) -> ChatResponse:
           extra={"session_id": request.sessionId}
       )
       raise
+
+
+async def stream_chat_response(request: ChatRequest) -> AsyncIterator[str]:
+    """
+    Generator function that streams chat responses in Server-Sent Events format.
+    Each event contains a JSON message fragment.
+    """
+    try:
+        svc = _init_chat_service()
+
+        # For now, we'll simulate streaming by breaking the response into chunks
+        # In a real implementation, this would stream from the LLM
+        response = svc.chat(request)
+
+        # Stream the session ID first
+        yield f"data: {json.dumps({'type': 'session', 'sessionId': response.sessionId})}\n\n"
+
+        # Stream each message
+        for msg in response.messages:
+            if msg.role == "assistant" and msg.content:
+                # Simulate streaming by breaking content into words
+                words = msg.content.split()
+                for i, word in enumerate(words):
+                    chunk = {
+                        'type': 'content',
+                        'role': 'assistant',
+                        'content': word + (" " if i < len(words) - 1 else ""),
+                        'messageId': msg.id
+                    }
+                    yield f"data: {json.dumps(chunk)}\n\n"
+                    await asyncio.sleep(0.02)  # Small delay to simulate streaming
+            elif msg.role == "tool" and msg.metadata:
+                # Stream tool messages immediately
+                chunk = {
+                    'type': 'tool',
+                    'metadata': msg.metadata,
+                    'messageId': msg.id
+                }
+                yield f"data: {json.dumps(chunk)}\n\n"
+
+        # Send completion signal
+        yield f"data: {json.dumps({'type': 'done'})}\n\n"
+
+    except Exception as e:
+        logger.error(f"Stream chat failed: {str(e)}", exc_info=True)
+        error_chunk = {'type': 'error', 'error': str(e)}
+        yield f"data: {json.dumps(error_chunk)}\n\n"
+
+
+@app.post("/chat/stream")
+async def chat_stream(request: ChatRequest) -> StreamingResponse:
+    """
+    Streaming chat endpoint that returns Server-Sent Events.
+
+    This endpoint streams the chat response as it's generated,
+    providing a better user experience for longer responses.
+    """
+    logger.info(
+        f"Stream chat request: {len(request.messages)} message(s), session={request.sessionId or '(new)'}",
+        extra={
+            "session_id": request.sessionId,
+            "message_count": len(request.messages),
+            "has_sheet_context": request.sheetContext is not None,
+        }
+    )
+
+    return StreamingResponse(
+        stream_chat_response(request),
+        media_type="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache",
+            "Connection": "keep-alive",
+            "X-Accel-Buffering": "no"  # Disable Nginx buffering
+        }
+    )
 
 
 # * ============================================================================

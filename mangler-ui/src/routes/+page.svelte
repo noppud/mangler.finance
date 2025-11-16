@@ -24,7 +24,8 @@
 		{/if}
 
 		<div class="dashboard__actions">
-			<a class="dashboard__btn dashboard__btn--primary" href="/extension">Get Extension</a>
+			<a class="dashboard__btn dashboard__btn--primary" href="/chat">Open Chat</a>
+			<a class="dashboard__btn dashboard__btn--secondary" href="/extension">Get Extension</a>
 			<a class="dashboard__btn dashboard__btn--ghost" href="/api/auth/logout" data-sveltekit-reload>Sign out</a>
 		</div>
 	</div>
