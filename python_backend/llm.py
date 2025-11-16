@@ -455,37 +455,58 @@ class PROMPTS:
       "- add_column: Add a column\n"
       "- rename_column: Rename a column header\n\n"
       "BE CAREFUL AND PRECISE:\n"
-      "- Double-check cell references in formulas (e.g., =SUM(D4:D15), =F4+C5)\n"
+      "- Double-check cell references in formulas (e.g., =SUM(D2:D7), =C2*D2)\n"
       "- Verify formula logic matches the data structure\n"
       "- Use batch_update for efficiency when setting multiple cells\n"
       "- Keep responses concise - typically 1-2 actions total\n\n"
-      "EXAMPLE - Simple hiring table:\n"
-      "User asks: \"Create a hiring plan for months 1-3\"\n\n"
-      "Good response:\n"
+      "KEEP TABLES SIMPLE:\n"
+      "- Use ONLY essential columns (Month, Role, Salary, etc.)\n"
+      "- NO extra columns like Phase, Focus Area, Notes, Headcount, etc.\n"
+      "- Include salaries and formulas\n"
+      "- Add a summary section with SUM formulas\n\n"
+      "EXAMPLE - Hiring plan table:\n"
+      "User asks: \"Create a simple hiring plan\"\n\n"
+      "Good response (simple table with salaries and formulas):\n"
       "{\n"
-      '  "intent": "Create hiring plan table with columns and formulas",\n'
+      '  "intent": "Create simple hiring table with salaries and summary",\n'
       '  "actions": [{\n'
       '    "type": "batch_update",\n'
-      '    "description": "Create table with headers, hires, and summary",\n'
+      '    "description": "Create table with Month, Role, Salary, Cost and summary",\n'
       '    "params": {\n'
       '      "updates": [\n'
       '        {cell: "A1", value: "Month"},\n'
       '        {cell: "B1", value: "Role"},\n'
-      '        {cell: "C1", value: "Salary"},\n'
+      '        {cell: "C1", value: "Headcount"},\n'
+      '        {cell: "D1", value: "Salary"},\n'
+      '        {cell: "E1", value: "Cost"},\n'
       '        {cell: "A2", value: 1},\n'
       '        {cell: "B2", value: "CTO"},\n'
-      '        {cell: "C2", value: 8000},\n'
+      '        {cell: "C2", value: 1},\n'
+      '        {cell: "D2", value: 8000},\n'
+      '        {cell: "E2", value: "=C2*D2", is_formula: true},\n'
       '        {cell: "A3", value: 2},\n'
-      '        {cell: "B3", value: "Engineer"},\n'
-      '        {cell: "C3", value: 8400},\n'
+      '        {cell: "B3", value: "ML Engineer"},\n'
+      '        {cell: "C3", value: 1},\n'
+      '        {cell: "D3", value: 8400},\n'
+      '        {cell: "E3", value: "=C3*D3", is_formula: true},\n'
       '        {cell: "A4", value: 3},\n'
-      '        {cell: "B4", value: "Engineer"},\n'
-      '        {cell: "C4", value: 7500},\n'
-      '        {cell: "A6", value: "Total"},\n'
-      '        {cell: "B6", value: "=SUM(C2:C4)", is_formula: true}\n'
+      '        {cell: "B4", value: "Full-Stack Engineer"},\n'
+      '        {cell: "C4", value: 1},\n'
+      '        {cell: "D4", value: 7500},\n'
+      '        {cell: "E4", value: "=C4*D4", is_formula: true},\n'
+      '        {cell: "A5", value: 4},\n'
+      '        {cell: "B5", value: "Product Manager"},\n'
+      '        {cell: "C5", value: 1},\n'
+      '        {cell: "D5", value: 7000},\n'
+      '        {cell: "E5", value: "=C5*D5", is_formula: true},\n'
+      '        {cell: "A7", value: "SUMMARY"},\n'
+      '        {cell: "A8", value: "Total Monthly Cost"},\n'
+      '        {cell: "B8", value: "=SUM(D2:D5)", is_formula: true},\n'
+      '        {cell: "A9", value: "Total Headcount"},\n'
+      '        {cell: "B9", value: "=SUM(C2:C5)", is_formula: true}\n'
       "      ]\n"
       "    },\n"
-      '    "affectedRange": "A1:C6"\n'
+      '    "affectedRange": "A1:E9"\n'
       "  }]\n"
       "}\n\n"
       "Return JSON with this structure:\n"
