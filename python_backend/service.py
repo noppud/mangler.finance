@@ -19,14 +19,43 @@ class ChatService:
     self.backend = backend
     self.store = store or ConversationStore()
     self._logger = ConversationLogger()
+    self._loaded_sessions: set = set()  # Track which sessions have been loaded from DB
+
+  def _ensure_history_loaded(self, session_id: str) -> None:
+    """
+    Ensure that the conversation history for a session is loaded from Supabase
+    into the in-memory store. Only loads once per session.
+    """
+    if session_id in self._loaded_sessions:
+      return
+
+    # Check if we already have history in memory
+    existing_history = self.store.get_history(session_id)
+    if existing_history:
+      # Already have messages in memory, mark as loaded
+      self._loaded_sessions.add(session_id)
+      return
+
+    # Try to load from Supabase if logger is enabled
+    if self._logger.enabled:
+      messages = self._logger.load_messages(session_id)
+      if messages:
+        self.store.set_history(session_id, messages)
+
+    # Mark as loaded even if no messages were found (prevents repeated DB queries)
+    self._loaded_sessions.add(session_id)
 
   def chat(self, request: ChatRequest) -> ChatResponse:
     """
     Handle a ChatRequest that already contains a full message history.
 
-    This method simply forwards the request to the backend, then records
-    the returned messages in the conversation store (if a sessionId is present).
+    This method loads any historical messages from Supabase on first access,
+    then forwards the request to the backend, and records the returned messages.
     """
+    # Load historical context from Supabase if this is the first time we're seeing this session
+    if request.sessionId:
+      self._ensure_history_loaded(request.sessionId)
+
     response = self.backend.send_chat(request)
 
     if request.sessionId:
@@ -65,6 +94,9 @@ class ChatService:
     history per session and sends that to the underlying backend.
     """
     sheet_ctx = sheet_context or SheetContext()
+
+    # Load historical context from Supabase if this is the first time we're seeing this session
+    self._ensure_history_loaded(session_id)
 
     history = self.store.get_history(session_id)
     user_message = ChatMessage(

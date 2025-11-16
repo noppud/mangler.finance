@@ -1,9 +1,10 @@
 from __future__ import annotations
 
+import uuid
 from typing import Iterable, List, Optional
 
 from .logging_config import get_logger
-from .models import ChatMessage, SheetContext
+from .models import ChatMessage, ChatMessageRole, ChatMessageMetadata, SheetContext
 from .supabase_client import get_supabase_client
 
 logger = get_logger(__name__)
@@ -27,6 +28,64 @@ class ConversationLogger:
   @property
   def enabled(self) -> bool:
     return self._client is not None
+
+  def load_messages(self, session_id: str) -> List[ChatMessage]:
+    """
+    Load all messages for a given session from Supabase, ordered by creation time.
+
+    Returns an empty list if Supabase is not configured or if the session has no messages.
+    """
+    if not self._client:
+      logger.debug("Cannot load messages: Supabase client not available")
+      return []
+
+    try:
+      logger.debug(f"Loading messages from Supabase for session {session_id}")
+      result = (
+        self._client.table("conversation_messages")
+        .select("*")
+        .eq("session_id", session_id)
+        .order("created_at", desc=False)
+        .execute()
+      )
+
+      data = getattr(result, "data", None)
+      if not isinstance(data, list):
+        logger.warning(f"Unexpected response format when loading messages for session {session_id}")
+        return []
+
+      messages: List[ChatMessage] = []
+      for row in data:
+        try:
+          # Parse metadata if present
+          metadata = None
+          if row.get("metadata"):
+            metadata = ChatMessageMetadata(**row["metadata"])
+
+          # Create ChatMessage from database row
+          message = ChatMessage(
+            id=row["message_id"],
+            role=ChatMessageRole(row["role"]),
+            content=row["content"],
+            metadata=metadata,
+          )
+          messages.append(message)
+        except Exception as e:
+          logger.warning(
+            f"Failed to parse message {row.get('message_id', 'unknown')}: {str(e)}",
+            extra={"session_id": session_id}
+          )
+          continue
+
+      logger.info(f"Loaded {len(messages)} message(s) from Supabase for session {session_id}")
+      return messages
+
+    except Exception as e:
+      logger.warning(
+        f"Failed to load messages from Supabase for session {session_id}: {str(e)}",
+        extra={"session_id": session_id}
+      )
+      return []
 
   def log_messages(
     self,

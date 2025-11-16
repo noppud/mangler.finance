@@ -29,6 +29,7 @@ class AgentOrchestrator:
 
   def __init__(self, llm_client: LLMClient, sheets_client: ServiceAccountSheetsClient, context_builder: ContextBuilder):
     self.llm_client = llm_client
+    self.sheets_client = sheets_client
     self.mistake_detector = MistakeDetector(context_builder, llm_client)
     self.sheet_modifier = SheetModifier(sheets_client, context_builder, llm_client)
     self.sheet_creator = SheetCreator(sheets_client, llm_client)
@@ -292,6 +293,67 @@ class AgentOrchestrator:
           )
         )
 
+      elif tool_name == "read_sheet":
+        # Read sheet data with both values and formulas
+        spreadsheet_id = normalize_spreadsheet_id(
+          args.get("spreadsheetId")
+          or sheet_context.spreadsheetId
+          or ""
+        )
+        if not spreadsheet_id:
+          raise ValueError("Missing spreadsheet ID")
+
+        sheet_title = args.get("sheetTitle") or sheet_context.sheetTitle
+        if not sheet_title:
+          raise ValueError("Missing sheet title")
+
+        # Get range - default to entire sheet if not specified
+        range_a1 = args.get("range")
+        if range_a1:
+          # If range doesn't include sheet name, prepend it
+          if "!" not in range_a1:
+            range_a1 = f"{sheet_title}!{range_a1}"
+        else:
+          # Read entire sheet (up to 1000 rows by default for safety)
+          range_a1 = f"{sheet_title}!A1:ZZ1000"
+
+        try:
+          result = self.sheets_client.read_range_with_formulas(spreadsheet_id, range_a1)
+
+          # Count cells with formulas and values
+          total_cells = 0
+          formula_cells = 0
+          non_empty_cells = 0
+          for row in result.get("values", []):
+            for cell in row:
+              total_cells += 1
+              if cell.get("formula"):
+                formula_cells += 1
+              if cell.get("value") is not None:
+                non_empty_cells += 1
+
+          messages.append(
+            ChatMessage(
+              id=str(uuid.uuid4()),
+              role="tool",
+              content=f"Read {non_empty_cells} cells from {range_a1} ({formula_cells} with formulas)",
+              metadata={
+                "toolName": "read_sheet",
+                "payload": result,
+              },
+            )
+          )
+          messages.append(
+            ChatMessage(
+              id=str(uuid.uuid4()),
+              role="assistant",
+              content=self._summarize_read_sheet_result(result, formula_cells, non_empty_cells),
+            )
+          )
+        except Exception as exc:
+          logger.error(f"read_sheet failed: {str(exc)}", exc_info=True)
+          raise RuntimeError(f"Failed to read sheet: {exc}")
+
       else:
         raise ValueError(f"Unknown tool: {tool_name}")
     except Exception as exc:
@@ -430,6 +492,26 @@ class AgentOrchestrator:
 
     if snapshot_id:
       summary += f"\n\nYou can undo these changes if needed (snapshot ID: {snapshot_id[:8]}...)."
+
+    return summary
+
+  @staticmethod
+  def _summarize_read_sheet_result(result: Dict[str, Any], formula_cells: int, non_empty_cells: int) -> str:
+    range_notation = result.get("a1Notation", "")
+    values = result.get("values", [])
+
+    total_rows = len(values)
+    total_cols = max(len(row) for row in values) if values else 0
+
+    summary = f"I've read the data from {range_notation}.\n\n"
+    summary += f"Sheet contains {total_rows} row{'s' if total_rows != 1 else ''} × {total_cols} column{'s' if total_cols != 1 else ''}\n"
+    summary += f"- {non_empty_cells} non-empty cell{'s' if non_empty_cells != 1 else ''}\n"
+    summary += f"- {formula_cells} formula{'s' if formula_cells != 1 else ''}\n\n"
+
+    if formula_cells > 0:
+      summary += "The data includes both calculated values and their underlying formulas. "
+
+    summary += "You can now ask me questions about this data or request modifications."
 
     return summary
 
