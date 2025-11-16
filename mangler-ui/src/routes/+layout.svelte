@@ -19,84 +19,86 @@
 	<link rel="icon" href="/mangler.png" sizes="32x32" type="image/png" />
 </svelte:head>
 
-<header class="app-header">
-	<div class="app-header__inner">
-		<div class="app-header__brand">
-			<a href="/">Mangler</a>
-			<p class="app-header__tagline">Operational console</p>
-		</div>
+<div class="app-container">
+	<header class="app-header">
+		<div class="app-header__inner">
+			<div class="app-header__brand">
+				<a href="/">Mangler</a>
+				<p class="app-header__tagline">Operational console</p>
+			</div>
 
-		<nav class="app-header__nav" aria-label="Primary">
-			{#each navLinks as link}
-				{#if data?.isAuthenticated || link.href === '/' || link.href === '/pricing'}
-					<a
-						href={link.href}
-						class={`app-header__nav-link ${$page.url.pathname === link.href ? 'is-active' : ''}`.trim()}
-						aria-current={$page.url.pathname === link.href ? 'page' : undefined}
-					>
-						{link.label}
-					</a>
+			<nav class="app-header__nav" aria-label="Primary">
+				{#each navLinks as link}
+					{#if data?.isAuthenticated || link.href === '/' || link.href === '/pricing'}
+						<a
+							href={link.href}
+							class={`app-header__nav-link ${$page.url.pathname === link.href ? 'is-active' : ''}`.trim()}
+							aria-current={$page.url.pathname === link.href ? 'page' : undefined}
+						>
+							{link.label}
+						</a>
+					{:else}
+						<span
+							class="app-header__nav-link app-header__nav-link--disabled"
+							title="Please login to access this feature"
+						>
+							{link.label}
+						</span>
+					{/if}
+				{/each}
+			</nav>
+
+			<div class="app-header__actions">
+				{#if data?.isAuthenticated}
+					<div class="app-header__user">
+						<span class="app-header__email">{data.user?.email}</span>
+						<a class="app-header__link" href="/api/auth/logout" data-sveltekit-reload>
+							Logout
+						</a>
+					</div>
 				{:else}
-					<span
-						class="app-header__nav-link app-header__nav-link--disabled"
-						title="Please login to access this feature"
-					>
-						{link.label}
-					</span>
-				{/if}
-			{/each}
-		</nav>
-
-		<div class="app-header__actions">
-			{#if data?.isAuthenticated}
-				<div class="app-header__user">
-					<span class="app-header__email">{data.user?.email}</span>
-					<a class="app-header__link" href="/api/auth/logout" data-sveltekit-reload>
-						Logout
+					<a class="app-header__link" href="/login">
+						Login
 					</a>
-				</div>
-			{:else}
-				<a class="app-header__link" href="/login">
-					Login
+				{/if}
+			</div>
+		</div>
+
+		{#if missingKindeConfig}
+			<div class="app-banner">
+				<span>Authentication not configured.</span>
+				<span class="app-banner__vars">Missing: {missingEnv.join(', ')}</span>
+			</div>
+		{/if}
+	</header>
+
+	<main class="app-main">
+		{@render children()}
+	</main>
+
+	<footer class="app-footer">
+		<div class="app-footer__content">
+			<div class="app-footer__info">
+				<p class="app-footer__copyright">© 2024 Mangler Finance</p>
+				<p class="app-footer__tagline">Intelligent spreadsheet guardian</p>
+			</div>
+			<div class="app-footer__links">
+				<a
+					href="https://github.com/noppud/mangler.finance"
+					target="_blank"
+					rel="noopener noreferrer"
+					class="app-footer__github"
+					aria-label="View on GitHub"
+				>
+					<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" width="24" height="24">
+						<path d="M12 0C5.37 0 0 5.37 0 12c0 5.31 3.435 9.795 8.205 11.385.6.105.825-.255.825-.57 0-.285-.015-1.23-.015-2.235-3.015.555-3.795-.735-4.035-1.41-.135-.345-.72-1.41-1.23-1.695-.42-.225-1.02-.78-.015-.795.945-.015 1.62.87 1.845 1.23 1.08 1.815 2.805 1.305 3.495.99.105-.78.42-1.305.765-1.605-2.67-.3-5.46-1.335-5.46-5.925 0-1.305.465-2.385 1.23-3.225-.12-.3-.54-1.53.12-3.18 0 0 1.005-.315 3.3 1.23.96-.27 1.98-.405 3-.405s2.04.135 3 .405c2.295-1.56 3.3-1.23 3.3-1.23.66 1.65.24 2.88.12 3.18.765.84 1.23 1.905 1.23 3.225 0 4.605-2.805 5.625-5.475 5.925.435.375.81 1.095.81 2.22 0 1.605-.015 2.895-.015 3.3 0 .315.225.69.825.57A12.02 12.02 0 0024 12c0-6.63-5.37-12-12-12z"/>
+					</svg>
+					<span>View on GitHub</span>
 				</a>
-			{/if}
+			</div>
 		</div>
-	</div>
-
-	{#if missingKindeConfig}
-		<div class="app-banner">
-			<span>Authentication not configured.</span>
-			<span class="app-banner__vars">Missing: {missingEnv.join(', ')}</span>
-		</div>
-	{/if}
-</header>
-
-<main class="app-main">
-	{@render children()}
-</main>
-
-<footer class="app-footer">
-	<div class="app-footer__content">
-		<div class="app-footer__info">
-			<p class="app-footer__copyright">© 2024 Mangler Finance</p>
-			<p class="app-footer__tagline">Intelligent spreadsheet guardian</p>
-		</div>
-		<div class="app-footer__links">
-			<a
-				href="https://github.com/noppud/mangler.finance"
-				target="_blank"
-				rel="noopener noreferrer"
-				class="app-footer__github"
-				aria-label="View on GitHub"
-			>
-				<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" width="24" height="24">
-					<path d="M12 0C5.37 0 0 5.37 0 12c0 5.31 3.435 9.795 8.205 11.385.6.105.825-.255.825-.57 0-.285-.015-1.23-.015-2.235-3.015.555-3.795-.735-4.035-1.41-.135-.345-.72-1.41-1.23-1.695-.42-.225-1.02-.78-.015-.795.945-.015 1.62.87 1.845 1.23 1.08 1.815 2.805 1.305 3.495.99.105-.78.42-1.305.765-1.605-2.67-.3-5.46-1.335-5.46-5.925 0-1.305.465-2.385 1.23-3.225-.12-.3-.54-1.53.12-3.18 0 0 1.005-.315 3.3 1.23.96-.27 1.98-.405 3-.405s2.04.135 3 .405c2.295-1.56 3.3-1.23 3.3-1.23.66 1.65.24 2.88.12 3.18.765.84 1.23 1.905 1.23 3.225 0 4.605-2.805 5.625-5.475 5.925.435.375.81 1.095.81 2.22 0 1.605-.015 2.895-.015 3.3 0 .315.225.69.825.57A12.02 12.02 0 0024 12c0-6.63-5.37-12-12-12z"/>
-				</svg>
-				<span>View on GitHub</span>
-			</a>
-		</div>
-	</div>
-</footer>
+	</footer>
+</div>
 
 <style>
 	:global(*, *::before, *::after) {
@@ -115,6 +117,14 @@
 			rgb(2, 6, 5);
 		color: #effff8;
 		line-height: 1.6;
+		display: flex;
+		flex-direction: column;
+	}
+
+	:global(#app) {
+		display: flex;
+		flex-direction: column;
+		min-height: 100vh;
 	}
 
 	:global(body)::before {
@@ -134,6 +144,12 @@
 		color: inherit;
 	}
 
+	.app-container {
+		display: flex;
+		flex-direction: column;
+		min-height: 100vh;
+	}
+
 	.app-header {
 		padding: 1rem 1.5rem 0.5rem;
 		background: rgba(4, 9, 8, 0.85);
@@ -143,6 +159,7 @@
 		z-index: 10;
 		border-bottom: 1px solid rgba(132, 241, 188, 0.08);
 		box-shadow: 0 8px 24px rgba(0, 0, 0, 0.45);
+		flex-shrink: 0;
 	}
 
 	.app-header__inner {
@@ -260,8 +277,10 @@
 	}
 
 	.app-main {
-		padding: 3.5rem 1.5rem 4.5rem;
-		min-height: calc(100vh - 8rem);
+		flex: 1;
+		padding: 3.5rem 1.5rem 2rem;
+		display: flex;
+		flex-direction: column;
 	}
 
 	.app-main > :global(*) {
@@ -280,6 +299,7 @@
 		border-top: 1px solid rgba(132, 241, 188, 0.08);
 		padding: 2rem 1.5rem;
 		margin-top: auto;
+		flex-shrink: 0;
 	}
 
 	.app-footer__content {
