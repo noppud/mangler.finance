@@ -116,101 +116,199 @@ class LLMClient:
     content = choices[0].get("message", {}).get("content", "")
     return content or ""
 
+  def _detect_json_truncation(self, json_str: str) -> bool:
+    """
+    Detect if a JSON string appears to be truncated.
+    Returns True if truncation is detected.
+    """
+    # Check for common truncation patterns
+    truncation_indicators = [
+      # Ends mid-key or mid-value
+      json_str.endswith('"'),
+      json_str.endswith(':'),
+      json_str.endswith(','),
+      # Unclosed brackets/braces
+      json_str.count('{') > json_str.count('}'),
+      json_str.count('[') > json_str.count(']'),
+      # Ends with incomplete structure
+      json_str.rstrip().endswith('",') and not json_str.rstrip().endswith('}'),
+    ]
+
+    return any(truncation_indicators)
+
   def chat_json(
     self,
     messages: List[Dict[str, str]],
     overrides: Optional[Dict[str, Any]] = None,
+    max_retries: int = 1,
   ) -> Any:
     """
     Send a request expecting a JSON response string. Handles the case where the
     model wraps JSON in markdown code fences.
 
-    Enhanced with robust error handling and validation.
+    Enhanced with robust error handling, truncation detection, and automatic retry.
+
+    Args:
+      messages: List of message dictionaries with 'role' and 'content'
+      overrides: Optional overrides for LLM parameters
+      max_retries: Number of times to retry if response is truncated (default: 1)
     """
-    content = self.chat_text(messages, overrides)
+    original_messages = messages.copy()
 
-    # Validate that we got some content
-    if not content or not content.strip():
-      logger.error(
-        "LLM returned empty content when JSON was expected",
-        extra={"messages_count": len(messages)}
-      )
-      raise RuntimeError(
-        "Failed to parse LLM response as JSON: Empty response received\n"
-        "This may indicate the LLM failed to generate output or hit a token limit.\n"
-        "Consider:\n"
-        "1. Simplifying your request\n"
-        "2. Reducing the amount of context provided\n"
-        "3. Breaking the task into smaller steps"
-      )
+    for attempt in range(max_retries + 1):
+      content = self.chat_text(messages, overrides)
 
-    json_str = content.strip()
+      # Validate that we got some content
+      if not content or not content.strip():
+        logger.error(
+          "LLM returned empty content when JSON was expected",
+          extra={"messages_count": len(messages), "attempt": attempt + 1}
+        )
+        raise RuntimeError(
+          "Failed to parse LLM response as JSON: Empty response received\n"
+          "This may indicate the LLM failed to generate output or hit a token limit.\n"
+          "Consider:\n"
+          "1. Simplifying your request\n"
+          "2. Reducing the amount of context provided\n"
+          "3. Breaking the task into smaller steps"
+        )
 
-    # Extract JSON from markdown code blocks if present
-    if "```" in json_str:
+      json_str = content.strip()
+
+      # Check for response length issues
+      if len(content) > 15000:
+        logger.warning(
+          f"LLM response is very long ({len(content)} chars) - may hit token limits",
+          extra={"content_length": len(content), "attempt": attempt + 1}
+        )
+
+      # Extract JSON from markdown code blocks if present
+      if "```" in json_str:
+        try:
+          # Look for ```json ... ``` or ``` ... ```
+          start = json_str.index("```")
+          end = json_str.rindex("```")
+          block = json_str[start + 3 : end]
+          # Strip optional language tag
+          if block.lstrip().startswith("json"):
+            block = block.lstrip()[4:]
+          json_str = block.strip()
+        except ValueError:
+          # Fallback to original content
+          pass
+
+      # Additional validation: check if response looks like JSON
+      if not (json_str.startswith("{") or json_str.startswith("[")):
+        logger.warning(
+          "LLM response doesn't start with { or [ - may not be valid JSON",
+          extra={"first_100_chars": json_str[:100]}
+        )
+        # Try to find the first { or [
+        for char in ["{", "["]:
+          if char in json_str:
+            start_idx = json_str.index(char)
+            logger.info(f"Found JSON start at position {start_idx}, extracting...")
+            json_str = json_str[start_idx:]
+            break
+
+      # Detect truncation before attempting to parse
+      if self._detect_json_truncation(json_str):
+        logger.warning(
+          f"Detected truncated JSON response on attempt {attempt + 1}",
+          extra={
+            "content_length": len(content),
+            "last_50_chars": json_str[-50:],
+            "attempt": attempt + 1
+          }
+        )
+
+        if attempt < max_retries:
+          # Retry with instructions to simplify
+          logger.info("Retrying with simplified instructions...")
+          messages = original_messages.copy()
+
+          # Add simplification instruction to the last user message
+          if messages and messages[-1].get("role") == "user":
+            messages[-1]["content"] += (
+              "\n\nIMPORTANT: Keep your response concise. "
+              "Limit the number of actions and avoid repetitive formatting. "
+              "Focus on the essential structure only."
+            )
+          continue
+        else:
+          raise RuntimeError(
+            f"Failed to parse LLM response as JSON: Response appears truncated\n"
+            f"Response length: {len(content)} chars\n"
+            f"Last 100 chars: ...{json_str[-100:]}\n\n"
+            f"The response is too long. Please:\n"
+            f"1. Simplify your request to generate less data\n"
+            f"2. Break the task into smaller steps\n"
+            f"3. Reduce the number of rows/columns/actions requested"
+          )
+
       try:
-        # Look for ```json ... ``` or ``` ... ```
-        start = json_str.index("```")
-        end = json_str.rindex("```")
-        block = json_str[start + 3 : end]
-        # Strip optional language tag
-        if block.lstrip().startswith("json"):
-          block = block.lstrip()[4:]
-        json_str = block.strip()
-      except ValueError:
-        # Fallback to original content
-        pass
+        parsed = json.loads(json_str)
 
-    # Additional validation: check if response looks like JSON
-    if not (json_str.startswith("{") or json_str.startswith("[")):
-      logger.warning(
-        "LLM response doesn't start with { or [ - may not be valid JSON",
-        extra={"first_100_chars": json_str[:100]}
-      )
-      # Try to find the first { or [
-      for char in ["{", "["]:
-        if char in json_str:
-          start_idx = json_str.index(char)
-          logger.info(f"Found JSON start at position {start_idx}, extracting...")
-          json_str = json_str[start_idx:]
-          break
+        # Validate that we got a meaningful structure
+        if isinstance(parsed, dict):
+          # Check for common required fields based on context
+          if "actions" in parsed and not isinstance(parsed["actions"], list):
+            logger.warning("Parsed JSON has 'actions' field but it's not a list")
 
-    try:
-      parsed = json.loads(json_str)
+        logger.info(
+          f"Successfully parsed JSON response on attempt {attempt + 1}",
+          extra={"content_length": len(content)}
+        )
+        return parsed
 
-      # Validate that we got a meaningful structure
-      if isinstance(parsed, dict):
-        # Check for common required fields based on context
-        if "actions" in parsed and not isinstance(parsed["actions"], list):
-          logger.warning("Parsed JSON has 'actions' field but it's not a list")
+      except json.JSONDecodeError as exc:
+        # Enhanced error message with debugging info
+        logger.error(
+          f"JSON parsing failed on attempt {attempt + 1}: {exc}",
+          extra={
+            "error_line": exc.lineno,
+            "error_col": exc.colno,
+            "error_msg": exc.msg,
+            "content_length": len(content),
+            "json_str_length": len(json_str),
+            "attempt": attempt + 1
+          }
+        )
 
-      return parsed
+        # If we have retries left and this looks like a length issue, retry
+        if attempt < max_retries and len(content) > 10000:
+          logger.info(f"Retrying due to large response ({len(content)} chars)...")
+          messages = original_messages.copy()
 
-    except json.JSONDecodeError as exc:
-      # Enhanced error message with debugging info
-      logger.error(
-        f"JSON parsing failed: {exc}",
-        extra={
-          "error_line": exc.lineno,
-          "error_col": exc.colno,
-          "error_msg": exc.msg,
-          "content_length": len(content),
-          "json_str_length": len(json_str),
-        }
-      )
+          # Add simplification instruction to the last user message
+          if messages and messages[-1].get("role") == "user":
+            messages[-1]["content"] += (
+              "\n\nIMPORTANT: Keep your response SHORT and CONCISE. "
+              "Generate FEWER actions (maximum 5-10). "
+              "Avoid repetitive formatting actions. "
+              "Focus ONLY on the essential data structure."
+            )
+          continue
 
-      # Provide detailed error message
-      error_context = json_str[max(0, exc.pos - 50):min(len(json_str), exc.pos + 50)]
-      raise RuntimeError(
-        f"Failed to parse LLM response as JSON: {exc}\n"
-        f"Error at line {exc.lineno}, column {exc.colno}: {exc.msg}\n"
-        f"Context around error: ...{error_context}...\n\n"
-        f"Full content was:\n{content}\n\n"
-        f"Suggestions:\n"
-        f"1. The LLM may have generated invalid JSON - try again\n"
-        f"2. Check if the response is too long (current: {len(content)} chars)\n"
-        f"3. Simplify your request to reduce complexity"
-      ) from exc
+        # Provide detailed error message
+        error_context = json_str[max(0, exc.pos - 50):min(len(json_str), exc.pos + 50)]
+        raise RuntimeError(
+          f"Failed to parse LLM response as JSON after {attempt + 1} attempt(s): {exc}\n"
+          f"Error at line {exc.lineno}, column {exc.colno}: {exc.msg}\n"
+          f"Context around error: ...{error_context}...\n\n"
+          f"Response length: {len(content)} chars\n\n"
+          f"Suggestions:\n"
+          f"1. The LLM may have generated invalid JSON - try again\n"
+          f"2. The response is too long (current: {len(content)} chars) - simplify your request\n"
+          f"3. Break the task into smaller steps (e.g., create data first, format later)\n"
+          f"4. Reduce the number of rows/columns/actions requested"
+        ) from exc
+
+    # If we get here, all retries failed
+    raise RuntimeError(
+      f"Failed to parse LLM response as JSON after {max_retries + 1} attempts\n"
+      f"Please simplify your request and try again"
+    )
 
 
 def _load_env_from_local_files() -> None:
@@ -350,7 +448,9 @@ class PROMPTS:
       "- You MUST work with the CURRENT SHEET ONLY - NEVER create or delete sheets\n"
       "- ALWAYS prefer batch operations over individual actions\n"
       "- Keep action count MINIMAL - if you have >10 individual actions, you MUST use batch_update instead\n"
-      "- Be EFFICIENT: One batch_update with 20 cells is better than 20 set_value actions\n\n"
+      "- Be EFFICIENT: One batch_update with 20 cells is better than 20 set_value actions\n"
+      "- KEEP YOUR RESPONSE SHORT: Limit total actions to 5-8. Prioritize DATA over FORMATTING.\n"
+      "- For formatting: Use SINGLE reformat_cells actions with RANGES, not one action per row/cell\n\n"
       "Available actions:\n"
       "- batch_update: PREFERRED for multi-cell operations (values, formulas, or mixed)\n"
       "  Use this for: setting up tables, filling multiple cells, creating complex layouts\n"
@@ -361,19 +461,26 @@ class PROMPTS:
       "- set_value: Set a SINGLE cell value (only use if truly just 1-2 cells)\n"
       "- clear_range: Clear a range of cells\n"
       "- normalize_data: Clean and standardize data in bulk\n"
-      "- reformat_cells: Change formatting for ranges\n\n"
+      "- reformat_cells: Change formatting for ranges (use ONCE per format type, not per row)\n\n"
       "ACTION SELECTION RULES:\n"
       "1. Setting up a table/simulation with many cells? → Use batch_update\n"
       "2. Updating 3+ cells with values/formulas? → Use batch_update\n"
       "3. Creating headers + data rows? → Use batch_update\n"
-      "4. Formatting many cells? → Use reformat_cells with ranges\n"
-      "5. Truly updating just 1-2 cells? → Use set_value\n\n"
+      "4. Formatting many cells? → Use ONE reformat_cells with a large range (e.g., \"A4:F15\")\n"
+      "5. Truly updating just 1-2 cells? → Use set_value\n"
+      "6. Multiple formatting types? → Maximum 2-3 reformat_cells actions total\n\n"
+      "EFFICIENCY RULES:\n"
+      "- ❌ DON'T create 10 separate reformat_cells for alternating rows\n"
+      "- ✅ DO skip decorative formatting or use ONE action for all similar formatting\n"
+      "- ❌ DON'T format every cell individually\n"
+      "- ✅ DO use ranges like \"A1:F20\" to format many cells at once\n"
+      "- ❌ DON'T exceed 8 total actions unless absolutely necessary\n\n"
       "EXAMPLES:\n"
       "❌ BAD (38 actions for a simple table):\n"
       "  [{type: \"set_value\", params: {cell: \"A1\", value: \"Title\"}}, \n"
       "   {type: \"set_value\", params: {cell: \"A3\", value: \"Input\"}}, \n"
       "   {type: \"set_value\", params: {cell: \"A4\", value: \"Hours\"}}, ...]\n\n"
-      "✅ GOOD (1-2 actions for the same table):\n"
+      "✅ GOOD (3 actions for the same table):\n"
       "  [{type: \"batch_update\", params: {updates: [\n"
       "    {cell: \"A1\", value: \"IT Consultant Earnings - Sweden\"},\n"
       "    {cell: \"A3\", value: \"Input Variables\"},\n"
@@ -382,7 +489,8 @@ class PROMPTS:
       "    {cell: \"B6\", value: \"=B4*B5\", is_formula: true},\n"
       "    ...\n"
       "  ]}},\n"
-      "  {type: \"reformat_cells\", params: {range: \"A1\", bold: true, fontSize: 16}}]\n\n"
+      "  {type: \"reformat_cells\", params: {range: \"A1\", bold: true, fontSize: 16}},\n"
+      "  {type: \"reformat_cells\", params: {range: \"A3:B6\", bold: true}}]\n\n"
       "Return a JSON plan with:\n"
       "{\n"
       '  "intent": "brief description of what user wants",\n'
@@ -401,7 +509,8 @@ class PROMPTS:
       "  ],\n"
       '  "warnings": ["any potential issues or data loss warnings (high threshold)"]\n'
       "}\n\n"
-      "Be resolute and make decisive actions. They get approved or rejected. You can't ask for confirmation."
+      "Be resolute and make decisive actions. They get approved or rejected. You can't ask for confirmation.\n"
+      "REMEMBER: Keep total actions to 5-8 maximum. Prioritize data over formatting."
     )
 
     @staticmethod

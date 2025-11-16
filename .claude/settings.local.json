@@ -14,7 +14,12 @@
       "Bash(git check-ignore:*)",
       "Bash(git rm:*)",
       "Bash(git reset:*)",
-      "Bash(git ls-tree:*)"
+      "Bash(git ls-tree:*)",
+      "Bash(find:*)",
+      "Bash(python:*)",
+      "Bash(python3:*)",
+      "Bash(pip install:*)",
+      "Bash(cat:*)"
     ],
     "deny": [],
     "ask": []
