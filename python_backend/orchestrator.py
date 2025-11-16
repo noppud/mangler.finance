@@ -388,6 +388,47 @@ class AgentOrchestrator:
           logger.error(f"read_sheet failed: {str(exc)}", exc_info=True)
           raise RuntimeError(f"Failed to read sheet: {exc}")
 
+      elif tool_name == "visualize_formulas":
+        # Import the visualize_formulas function from api module
+        from .api import visualize_formulas_endpoint, VisualizeFormulasRequest
+
+        # Parse the spreadsheet URL to extract ID and gid
+        raw_id = args.get("spreadsheetId") or sheet_context.spreadsheetId or ""
+
+        if not raw_id:
+          raise ValueError("Missing spreadsheet ID for visualize_formulas")
+
+        # Create request and call the endpoint
+        try:
+          request = VisualizeFormulasRequest(sheet_url=raw_id)
+          # Call the endpoint function directly (it's async but we can use asyncio)
+          import asyncio
+          loop = asyncio.get_event_loop()
+          result = loop.run_until_complete(visualize_formulas_endpoint(request))
+        except Exception as exc:
+          logger.error(f"visualize_formulas failed: {str(exc)}", exc_info=True)
+          raise RuntimeError(f"Failed to visualize formulas: {exc}")
+
+        # Create tool response messages
+        messages.append(
+          ChatMessage(
+            id=str(uuid.uuid4()),
+            role="tool",
+            content=result.get("message", "Formula visualization completed"),
+            metadata={
+              "toolName": "visualize_formulas",
+              "payload": result,
+            },
+          )
+        )
+        messages.append(
+          ChatMessage(
+            id=str(uuid.uuid4()),
+            role="assistant",
+            content=self._summarize_visualize_formulas_result(result),
+          )
+        )
+
       else:
         raise ValueError(f"Unknown tool: {tool_name}")
     except Exception as exc:
@@ -588,6 +629,25 @@ class AgentOrchestrator:
       summary += "The data includes both calculated values and their underlying formulas. "
 
     summary += "You can now ask me questions about this data or request modifications."
+
+    return summary
+
+  @staticmethod
+  def _summarize_visualize_formulas_result(result: Dict[str, Any]) -> str:
+    status = result.get("status")
+    count = result.get("count", 0)
+    snapshot_id = result.get("snapshot_batch_id")
+
+    if status == "no_cells":
+      return "No formulas or hard-coded numeric values were found on this sheet."
+
+    summary = f"I've color-coded {count} cell{'s' if count != 1 else ''} on your sheet:\n"
+    summary += "- Formulas are highlighted in green\n"
+    summary += "- Hard-coded numeric values are highlighted in orange\n\n"
+    summary += "This visual distinction helps identify which cells contain calculations versus raw data."
+
+    if snapshot_id:
+      summary += f"\n\nYou can restore the original colors if needed (snapshot ID: {snapshot_id[:8]}...)."
 
     return summary
 
