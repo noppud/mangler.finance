@@ -249,7 +249,7 @@ function callChatApi(userMessage, spreadsheetUrl, sheetTitle, sessionId) {
       spreadsheetId: spreadsheetUrl,
       sheetTitle: sheetTitle,
     },
-    sessionId: sessionId || generateSessionId()
+    sessionId: sessionId,
   };
 
   // Set up request options
