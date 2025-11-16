@@ -389,8 +389,14 @@ class AgentOrchestrator:
           raise RuntimeError(f"Failed to read sheet: {exc}")
 
       elif tool_name == "visualize_formulas":
-        # Import the visualize_formulas function from api module
-        from .api import visualize_formulas_endpoint, VisualizeFormulasRequest
+        # Import the core visualize_formulas function directly (not the async endpoint)
+        try:
+          from tools.visulize_formulas import visualize_formulas
+        except ImportError:
+          raise RuntimeError(
+            "visualize_formulas tool is not available. "
+            "Ensure tools.visulize_formulas module is installed."
+          )
 
         # Parse the spreadsheet URL to extract ID and gid
         raw_id = args.get("spreadsheetId") or sheet_context.spreadsheetId or ""
@@ -398,13 +404,9 @@ class AgentOrchestrator:
         if not raw_id:
           raise ValueError("Missing spreadsheet ID for visualize_formulas")
 
-        # Create request and call the endpoint
+        # Call the core function directly (synchronous)
         try:
-          request = VisualizeFormulasRequest(sheet_url=raw_id)
-          # Call the endpoint function directly (it's async but we can use asyncio)
-          import asyncio
-          loop = asyncio.get_event_loop()
-          result = loop.run_until_complete(visualize_formulas_endpoint(request))
+          result = visualize_formulas(sheet_url=raw_id)
         except Exception as exc:
           logger.error(f"visualize_formulas failed: {str(exc)}", exc_info=True)
           raise RuntimeError(f"Failed to visualize formulas: {exc}")
