@@ -48,7 +48,7 @@ except ImportError:  # pragma: no cover - optional tools
     GoogleSheetsFormulaValidator = None  # type: ignore[assignment]
 
 try:
-    from tools.visulize_formulas import visualize_formulas
+    from tools.visualize_formulas import visualize_formulas
 except ImportError:  # pragma: no cover - optional tools
     visualize_formulas = None  # type: ignore[assignment]
 

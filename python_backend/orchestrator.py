@@ -391,11 +391,11 @@ class AgentOrchestrator:
       elif tool_name == "visualize_formulas":
         # Import the core visualize_formulas function directly (not the async endpoint)
         try:
-          from tools.visulize_formulas import visualize_formulas
+          from tools.visualize_formulas import visualize_formulas
         except ImportError:
           raise RuntimeError(
             "visualize_formulas tool is not available. "
-            "Ensure tools.visulize_formulas module is installed."
+            "Ensure tools.visualize_formulas module is installed."
           )
 
         # Parse the spreadsheet URL to extract ID and gid
