@@ -164,7 +164,7 @@
 				<p class="about-section__stat-label">Uptime</p>
 			</div>
 			<div class="about-section__stat">
-				<p class="about-section__stat-value"><100ms</p>
+				<p class="about-section__stat-value">&lt;100ms</p>
 				<p class="about-section__stat-label">Response time</p>
 			</div>
 			<div class="about-section__stat">
