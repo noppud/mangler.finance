@@ -70,15 +70,16 @@
 
 <style>
 	:global(body) {
-		background-color: #020617;
-		color: #f8fafc;
+		background-color: #050b09;
+		color: #e5f6ee;
 		font-family: 'Inter', system-ui, -apple-system, BlinkMacSystemFont, sans-serif;
 	}
 
 	.login {
 		min-height: calc(100vh - 4rem);
 		padding: clamp(2.5rem, 5vw, 5rem) clamp(1.5rem, 4vw, 6rem);
-		background-color: #05070f;
+		background: radial-gradient(circle at top, rgba(67, 187, 131, 0.18), transparent 55%),
+			rgba(5, 11, 9, 0.95);
 	}
 
 	.login__shell {
@@ -100,7 +101,7 @@
 		text-transform: uppercase;
 		letter-spacing: 0.35em;
 		font-size: 0.75rem;
-		color: rgba(148, 163, 184, 0.85);
+		color: rgba(144, 244, 184, 0.85);
 		margin-bottom: 1rem;
 	}
 
@@ -111,7 +112,7 @@
 	}
 
 	.hero__copy {
-		color: rgba(226, 232, 240, 0.85);
+		color: rgba(210, 244, 227, 0.9);
 		font-size: 1.05rem;
 		line-height: 1.9;
 		margin-bottom: 1.5rem;
@@ -131,7 +132,7 @@
 		display: flex;
 		gap: 0.6rem;
 		align-items: flex-start;
-		color: rgba(226, 232, 240, 0.85);
+		color: rgba(210, 244, 227, 0.9);
 	}
 
 	.hero__list li::before {
@@ -139,9 +140,9 @@
 		width: 0.5rem;
 		height: 0.5rem;
 		border-radius: 50%;
-		background: #29e3ff;
+		background: #40ff9f;
 		margin-top: 0.5rem;
-		box-shadow: 0 0 16px rgba(41, 227, 255, 0.45);
+		box-shadow: 0 0 16px rgba(64, 255, 159, 0.45);
 	}
 
 	.login__metrics {
@@ -152,10 +153,10 @@
 	.login__card {
 		width: min(420px, 100%);
 		padding: clamp(2rem, 4vw, 2.75rem);
-		background: rgba(15, 23, 42, 0.92);
-		border: 1px solid rgba(41, 227, 255, 0.18);
+		background: rgba(9, 21, 17, 0.92);
+		border: 1px solid rgba(79, 180, 133, 0.4);
 		border-radius: 1.1rem;
-		box-shadow: 0 20px 60px rgba(4, 7, 20, 0.75);
+		box-shadow: 0 25px 75px rgba(3, 10, 8, 0.85);
 	}
 
 	.login__badge {
@@ -165,14 +166,14 @@
 		font-size: 0.75rem;
 		text-transform: uppercase;
 		letter-spacing: 0.08em;
-		background-color: rgba(59, 130, 246, 0.1);
-		color: #93c5fd;
+		background-color: rgba(76, 214, 147, 0.15);
+		color: #a4f9cd;
 		margin-bottom: 1rem;
 	}
 
 	.login__subtitle {
 		margin: 0.75rem 0 1.5rem;
-		color: #94a3b8;
+		color: rgba(188, 235, 212, 0.85);
 	}
 
 	.login__error,
@@ -212,21 +213,21 @@
 		border-radius: 0.75rem;
 		text-decoration: none;
 		font-weight: 600;
-		color: #020617;
-		background: linear-gradient(90deg, #29e3ff, #1fb5ff);
-		box-shadow: 0 10px 30px rgba(41, 227, 255, 0.25);
+		color: #03150d;
+		background: linear-gradient(120deg, #2ba36a, #3fd08b, #84f4bf);
+		box-shadow: 0 15px 35px rgba(63, 208, 139, 0.35);
 		transition: transform 150ms ease, box-shadow 150ms ease;
 	}
 
 	.login__button:hover {
-		transform: translateY(-1px);
-		box-shadow: 0 16px 36px rgba(31, 181, 255, 0.3);
+		transform: translateY(-2px);
+		box-shadow: 0 22px 45px rgba(132, 244, 191, 0.35);
 	}
 
 	.login__button--disabled,
 	.login__button--disabled:hover {
-		background: rgba(41, 227, 255, 0.25);
-		color: rgba(15, 23, 42, 0.6);
+		background: rgba(62, 179, 122, 0.25);
+		color: rgba(12, 39, 27, 0.7);
 		box-shadow: none;
 		cursor: not-allowed;
 		transform: none;
@@ -235,7 +236,7 @@
 	.login__footnote {
 		margin-top: 1rem;
 		font-size: 0.85rem;
-		color: rgba(148, 163, 184, 0.85);
+		color: rgba(188, 235, 212, 0.75);
 	}
 
 	@media (max-width: 640px) {

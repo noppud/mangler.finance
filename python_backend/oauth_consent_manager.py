@@ -54,6 +54,18 @@ class OAuthConsentManager:
             raise ValueError("User email is required to register as a tester.")
 
         config = self._session.get(self._consent_url)
+        if config.status_code == 404:
+            logger.error(
+                "OAuth consent screen not configured for project %s. "
+                "Please configure it at: https://console.cloud.google.com/apis/credentials/consent?project=%s",
+                self._project_id,
+                self._project_id,
+            )
+            raise ValueError(
+                f"OAuth consent screen not configured for project '{self._project_id}'. "
+                f"Please visit https://console.cloud.google.com/apis/credentials/consent?project={self._project_id} "
+                "to set it up first."
+            )
         if config.status_code >= 400:
             logger.error("Failed to load OAuth consent screen: %s", config.text)
             config.raise_for_status()

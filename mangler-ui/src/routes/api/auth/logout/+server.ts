@@ -14,17 +14,12 @@ const resolveLogoutRedirect = () => {
 export const GET: RequestHandler = async (event) => {
 	const redirectTarget = resolveLogoutRedirect() || '/';
 
-	try {
-		const url = await kindeAuthClient.logout(
-			event as unknown as Parameters<typeof kindeAuthClient.logout>[0]
-		);
+	const url = await kindeAuthClient.logout(
+		event as unknown as Parameters<typeof kindeAuthClient.logout>[0]
+	);
 
-		url.searchParams.set('post_logout_redirect_uri', redirectTarget);
-		url.searchParams.set('logout_redirect_url', redirectTarget);
+	url.searchParams.set('post_logout_redirect_uri', redirectTarget);
+	url.searchParams.set('logout_redirect_url', redirectTarget);
 
-		throw redirect(302, url.toString());
-	} catch (err) {
-		console.error('Logout error', err);
-		throw redirect(302, redirectTarget);
-	}
+	throw redirect(302, url.toString());
 };

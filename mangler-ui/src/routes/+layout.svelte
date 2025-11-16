@@ -71,11 +71,11 @@
 	}
 
 	.app-header__brand a {
-		font-weight: 700;
+		font-weight: 800;
 		text-decoration: none;
-		color: #e9fff4;
-		font-size: 1.1rem;
-		letter-spacing: 0.04em;
+		color: #bffcd8;
+		font-size: clamp(1.2rem, 2vw, 1.75rem);
+		letter-spacing: 0.08em;
 		text-transform: uppercase;
 	}
 
@@ -93,18 +93,19 @@
 
 	.app-header__link {
 		text-decoration: none;
-		font-weight: 600;
-		padding: 0.45rem 1rem;
+		font-weight: 700;
+		padding: 0.5rem 1.2rem;
 		border-radius: 999px;
-		border: 1px solid rgba(109, 136, 128, 0.45);
-		color: #d2fff0;
-		background: rgba(7, 17, 15, 0.6);
-		transition: border-color 0.2s ease, background 0.2s ease;
+		border: 1px solid rgba(84, 187, 130, 0.75);
+		color: #03140d;
+		background: linear-gradient(135deg, rgba(48, 136, 95, 0.95), rgba(92, 221, 153, 0.95));
+		box-shadow: 0 10px 20px rgba(58, 201, 136, 0.25);
+		transition: transform 0.2s ease, box-shadow 0.2s ease;
 	}
 
 	.app-header__link:hover {
-		border-color: rgba(74, 222, 128, 0.7);
-		background: rgba(10, 24, 21, 0.85);
+		transform: translateY(-1px);
+		box-shadow: 0 14px 30px rgba(92, 221, 153, 0.35);
 	}
 
 	.app-banner {

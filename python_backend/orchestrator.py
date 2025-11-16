@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import uuid
+import json
 from typing import Any, Dict, List, Optional
 
 from .creator import SheetCreator
@@ -11,7 +12,10 @@ from .modifier import SheetModifier
 from .context_builder import ContextBuilder
 from .sheets_client import ServiceAccountSheetsClient
 from .utils import normalize_spreadsheet_id, parse_spreadsheet_url
-from .models import ChatMessage, SheetContext
+from .models import ChatMessage, ChatMessageMetadata, SheetContext, MCPToolCallRequest
+from .mcp_registry import MCPRegistry
+from .mcp_executor import MCPExecutor
+from .rate_limiter import MCPRateLimiter
 
 logger = get_logger(__name__)
 
@@ -27,24 +31,86 @@ class AgentOrchestrator:
   - create_sheet
   """
 
-  def __init__(self, llm_client: LLMClient, sheets_client: ServiceAccountSheetsClient, context_builder: ContextBuilder):
+  def __init__(
+    self,
+    llm_client: LLMClient,
+    sheets_client: ServiceAccountSheetsClient,
+    context_builder: ContextBuilder,
+    mcp_registry: Optional[MCPRegistry] = None,  # NEW
+    rate_limiter: Optional[MCPRateLimiter] = None  # NEW
+  ):
     self.llm_client = llm_client
     self.sheets_client = sheets_client
+    self.context_builder = context_builder
     self.mistake_detector = MistakeDetector(context_builder, llm_client)
     self.sheet_modifier = SheetModifier(sheets_client, context_builder, llm_client)
     self.sheet_creator = SheetCreator(sheets_client, llm_client)
 
-  def process_chat(
+    # NEW: MCP support
+    self.mcp_registry = mcp_registry
+    self.mcp_executor = None
+    if mcp_registry and rate_limiter:
+      self.mcp_executor = MCPExecutor(mcp_registry, rate_limiter)
+
+  async def process_chat(
     self,
     messages: List[ChatMessage],
     sheet_context: SheetContext,
+    user_id: Optional[str] = None,  # NEW - required for MCP loading
+    mcp_mentions: Optional[List[str]] = None  # NEW - hint from @mentions
   ) -> List[ChatMessage]:
     try:
       logger.debug(f"Processing chat with {len(messages)} message(s)")
+
+      # Load user's MCP tools if user_id provided
+      mcp_tools = []
+      if user_id and self.mcp_registry:
+        try:
+          mcp_tools = await self.mcp_registry.get_user_tools(user_id)
+          logger.info(f"Loaded {len(mcp_tools)} MCP tools for user {user_id}")
+
+          # Filter by mentions if provided
+          if mcp_mentions:
+            original_count = len(mcp_tools)
+            mcp_tools = [
+              tool for tool in mcp_tools
+              if any(
+                mention.lower() in tool.name.lower() or
+                mention.lower() in tool.mcp_server_name.lower()
+                for mention in mcp_mentions
+              )
+            ]
+            logger.info(
+              f"Filtered to {len(mcp_tools)} tools based on mentions: {mcp_mentions}"
+            )
+        except Exception as e:
+          logger.error(f"Failed to load MCP tools: {e}")
+          # Continue without MCP tools
+
       chat_history = self._format_chat_history(messages)
       ctx_str = self._format_sheet_context(sheet_context)
 
-      system_prompt = PROMPTS.AGENT.system
+      # Get available tools (built-in + MCP)
+      available_tools = self._get_built_in_tools()
+
+      # Add MCP tools to available tools
+      for tool in mcp_tools:
+        available_tools.append({
+          "name": f"mcp_{tool.mcp_server_name}_{tool.name}".replace(" ", "_").lower(),
+          "description": f"[MCP: {tool.mcp_server_name}] {tool.description}",
+          "input_schema": tool.input_schema,
+          "source": "mcp",
+          "mcp_server_id": tool.mcp_server_id,
+          "mcp_tool_name": tool.name
+        })
+
+      logger.info(
+        f"Agent has {len(available_tools)} tools available "
+        f"({len(mcp_tools)} from MCPs)"
+      )
+
+      # Build enhanced system prompt with MCP tools
+      system_prompt = self._build_system_prompt_with_tools(available_tools)
       user_prompt = PROMPTS.AGENT.user(chat_history, ctx_str)
 
       logger.debug("Calling LLM for chat processing")
@@ -93,9 +159,28 @@ class AgentOrchestrator:
           )
         )
 
-        tool_messages = self._execute_tool_call(tool_name, tool_args, sheet_context)
-        new_messages.extend(tool_messages)
-        logger.debug(f"Tool call completed: {len(tool_messages)} message(s) returned")
+        # Check if it's an MCP tool
+        tool_info = next(
+          (t for t in available_tools if t["name"] == tool_name),
+          {"source": "built-in"}
+        )
+
+        if tool_info.get("source") == "mcp":
+          result = await self._execute_mcp_tool(user_id, tool_info, tool_args)
+          new_messages.append(ChatMessage(
+            id=str(uuid.uuid4()),
+            role="tool",
+            content=json.dumps(result),
+            metadata=ChatMessageMetadata(
+              toolName=tool_name,
+              payload=result
+            )
+          ))
+        else:
+          tool_messages = self._execute_tool_call(tool_name, tool_args, sheet_context)
+          new_messages.extend(tool_messages)
+
+        logger.debug(f"Tool call completed: {len(new_messages)} message(s) returned")
       else:
         logger.error(f"Unknown step type from LLM: {step}")
         raise ValueError(f"Unknown step type: {step}")

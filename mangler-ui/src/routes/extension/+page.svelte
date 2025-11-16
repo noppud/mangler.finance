@@ -564,14 +564,14 @@
 
 <style>
 	:global(body) {
-		background-color: #020617;
-		color: #f8fafc;
+		background-color: #050b09;
+		color: #e5f6ee;
 	}
 
 	.extension-page {
 		max-width: 800px;
 		margin: 0 auto;
-		padding: 2rem;
+		padding: clamp(2rem, 4vw, 3rem);
 	}
 
 	.header {
@@ -582,7 +582,7 @@
 	.back-link {
 		display: inline-flex;
 		align-items: center;
-		color: #93c5fd;
+		color: #8df9c1;
 		text-decoration: none;
 		font-size: 0.9rem;
 		margin-bottom: 1rem;
@@ -590,25 +590,25 @@
 	}
 
 	.back-link:hover {
-		color: #60a5fa;
+		color: #b0ffd7;
 	}
 
 	h1 {
 		font-size: 2.25rem;
 		margin: 0.5rem 0 1rem;
-		color: #94a3b8;
+		color: rgba(166, 221, 197, 0.85);
 		font-weight: 600;
 	}
 
 	h1 span {
 		display: block;
 		font-size: clamp(2.8rem, 5vw, 3.5rem);
-		color: #f8fafc;
+		color: #f4fff9;
 		letter-spacing: -0.02em;
 	}
 
 	.subtitle {
-		color: #94a3b8;
+		color: rgba(188, 235, 212, 0.8);
 		font-size: 1.1rem;
 		margin: 0;
 	}
@@ -620,33 +620,34 @@
 	}
 
 	.card {
-		background: rgba(15, 23, 42, 0.6);
-		border: 1px solid rgba(148, 163, 184, 0.2);
+		background: rgba(10, 19, 16, 0.85);
+		border: 1px solid rgba(77, 133, 112, 0.4);
 		border-radius: 1rem;
 		padding: 2rem;
+		box-shadow: 0 30px 45px rgba(3, 8, 6, 0.7);
 	}
 
 	.card h2 {
 		font-size: 1.5rem;
 		margin: 0 0 1rem;
-		color: #f8fafc;
+		color: #e9fff4;
 	}
 
 	.card h3 {
 		font-size: 1.1rem;
 		margin: 1.5rem 0 0.75rem;
-		color: #e2e8f0;
+		color: #c9f1dd;
 	}
 
 	.instruction {
-		color: #94a3b8;
+		color: rgba(189, 231, 212, 0.85);
 		margin-bottom: 1.5rem;
 		line-height: 1.6;
 	}
 
 	.service-account-box {
-		background: rgba(41, 227, 255, 0.08);
-		border: 1px solid rgba(41, 227, 255, 0.25);
+		background: rgba(63, 208, 139, 0.12);
+		border: 1px solid rgba(63, 208, 139, 0.35);
 		border-radius: 0.75rem;
 		padding: 1.5rem;
 		margin-bottom: 2rem;
@@ -655,7 +656,7 @@
 	.service-account-box label {
 		display: block;
 		font-size: 0.9rem;
-		color: #93c5fd;
+		color: #9cfacc;
 		margin-bottom: 0.5rem;
 		font-weight: 500;
 	}
@@ -668,33 +669,34 @@
 	.email-input {
 		flex: 1;
 		padding: 0.75rem;
-		background: rgba(15, 23, 42, 0.8);
-		border: 1px solid rgba(148, 163, 184, 0.3);
+		background: rgba(4, 12, 10, 0.9);
+		border: 1px solid rgba(108, 163, 140, 0.5);
 		border-radius: 0.5rem;
-		color: #f8fafc;
-		font-family: monospace;
+		color: #d9ffef;
+		font-family: 'JetBrains Mono', 'SFMono-Regular', Consolas, monospace;
 		font-size: 0.9rem;
 	}
 
 	.copy-btn {
 		padding: 0.75rem 1rem;
-		background: #29e3ff;
+		background: linear-gradient(140deg, #2ba36a, #3fd08b);
 		border: none;
 		border-radius: 0.5rem;
 		cursor: pointer;
 		font-size: 1.2rem;
+		color: #03150d;
 		transition: all 0.2s ease;
 	}
 
 	.copy-btn:hover {
-		background: #15a8c3;
+		background: linear-gradient(140deg, #3fd08b, #84f4bf);
 		transform: translateY(-1px);
 	}
 
 	.hint {
 		margin: 0.75rem 0 0;
 		font-size: 0.85rem;
-		color: #7dd3fc;
+		color: #acf7d3;
 	}
 
 	.tester-notice {
@@ -705,15 +707,15 @@
 	}
 
 	.tester-notice--pending {
-		background: rgba(59, 130, 246, 0.1);
-		border: 1px solid rgba(59, 130, 246, 0.3);
-		color: #bfdbfe;
+		background: rgba(28, 112, 83, 0.35);
+		border: 1px solid rgba(71, 171, 131, 0.65);
+		color: #c5ffe8;
 	}
 
 	.tester-notice--success {
-		background: rgba(34, 197, 94, 0.12);
-		border: 1px solid rgba(34, 197, 94, 0.35);
-		color: #86efac;
+		background: rgba(36, 167, 107, 0.25);
+		border: 1px solid rgba(76, 214, 147, 0.6);
+		color: #aefcd5;
 	}
 
 	.tester-notice--error {
@@ -725,36 +727,38 @@
 	.url-input {
 		width: 100%;
 		padding: 1rem;
-		background: rgba(15, 23, 42, 0.8);
-		border: 2px solid rgba(148, 163, 184, 0.3);
+		background: rgba(4, 12, 10, 0.9);
+		border: 2px solid rgba(108, 163, 140, 0.45);
 		border-radius: 0.75rem;
-		color: #f8fafc;
+		color: #e9fff4;
 		font-size: 1rem;
 		margin-bottom: 1rem;
-		transition: border-color 0.2s ease;
+		transition: border-color 0.2s ease, box-shadow 0.2s ease;
 	}
 
 	.url-input:focus {
 		outline: none;
-		border-color: #3b82f6;
+		border-color: #3fd08b;
+		box-shadow: 0 0 0 3px rgba(63, 208, 139, 0.2);
 	}
 
 	.install-btn {
 		width: 100%;
 		padding: 1rem 1.5rem;
-		background: linear-gradient(135deg, #3b82f6, #8b5cf6);
-		color: #fff;
+		background: linear-gradient(135deg, #2ba36a, #3fd08b, #84f4bf);
+		color: #03160d;
 		border: none;
 		border-radius: 0.75rem;
 		font-size: 1.1rem;
 		font-weight: 600;
 		cursor: pointer;
 		transition: all 0.2s ease;
+		box-shadow: 0 18px 40px rgba(63, 208, 139, 0.35);
 	}
 
 	.install-btn:hover {
 		transform: translateY(-2px);
-		box-shadow: 0 10px 25px rgba(59, 130, 246, 0.3);
+		box-shadow: 0 24px 50px rgba(132, 244, 191, 0.4);
 	}
 
 	.status-card {
@@ -765,8 +769,8 @@
 	.spinner {
 		width: 50px;
 		height: 50px;
-		border: 4px solid rgba(59, 130, 246, 0.2);
-		border-top-color: #3b82f6;
+		border: 4px solid rgba(63, 208, 139, 0.2);
+		border-top-color: #3fd08b;
 		border-radius: 50%;
 		margin: 0 auto 1.5rem;
 		animation: spin 1s linear infinite;
@@ -829,7 +833,7 @@
 
 	.success-message,
 	.error-message {
-		color: #94a3b8;
+		color: rgba(190, 230, 212, 0.85);
 		font-size: 1.1rem;
 		margin-bottom: 2rem;
 	}
@@ -849,12 +853,12 @@
 		border-radius: 0.75rem;
 		padding: 0.75rem 1rem;
 		font-weight: 500;
-		border: 1px solid rgba(148, 163, 184, 0.2);
+		border: 1px solid rgba(103, 169, 144, 0.35);
 	}
 
 	.status-pass {
-		background: rgba(34, 197, 94, 0.08);
-		color: #4ade80;
+		background: rgba(63, 208, 139, 0.15);
+		color: #78f6b9;
 	}
 
 	.status-fail {
@@ -863,17 +867,18 @@
 	}
 
 	.success-details {
-		background: rgba(34, 197, 94, 0.1);
-		border: 1px solid rgba(34, 197, 94, 0.3);
+		background: rgba(20, 46, 36, 0.9);
+		border: 1px solid rgba(82, 149, 122, 0.45);
 		border-radius: 0.75rem;
 		padding: 1.5rem;
 		margin-bottom: 2rem;
 		text-align: left;
+		box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.03);
 	}
 
 	.success-details p {
 		margin: 0.5rem 0;
-		color: #94a3b8;
+		color: rgba(190, 231, 214, 0.85);
 	}
 
 	.next-steps {
@@ -882,7 +887,7 @@
 	}
 
 	.next-steps ol {
-		color: #94a3b8;
+		color: rgba(190, 231, 214, 0.85);
 		line-height: 1.8;
 	}
 
@@ -907,25 +912,26 @@
 	}
 
 	.open-sheet-btn {
-		background: #22c55e;
-		color: #fff;
+		background: linear-gradient(135deg, #2ba36a, #3fd08b);
+		color: #04160e;
+		box-shadow: 0 12px 25px rgba(63, 208, 139, 0.3);
 	}
 
 	.open-sheet-btn:hover {
-		background: #16a34a;
+		background: linear-gradient(135deg, #3fd08b, #84f4bf);
 		transform: translateY(-1px);
 	}
 
 	.reset-btn,
 	.retry-btn {
-		background: rgba(148, 163, 184, 0.2);
-		color: #e2e8f0;
-		border: 1px solid rgba(148, 163, 184, 0.3);
+		background: rgba(7, 16, 13, 0.7);
+		color: #c7eddc;
+		border: 1px solid rgba(103, 169, 144, 0.5);
 	}
 
 	.reset-btn:hover,
 	.retry-btn:hover {
-		background: rgba(148, 163, 184, 0.3);
+		background: rgba(11, 25, 20, 0.85);
 	}
 
 	.error-help {
@@ -934,7 +940,7 @@
 	}
 
 	.error-help ul {
-		color: #94a3b8;
+		color: rgba(190, 231, 214, 0.85);
 		line-height: 1.8;
 	}
 
@@ -948,7 +954,7 @@
 	.manual-fallback ol {
 		margin: 0 0 1rem;
 		padding-left: 1.25rem;
-		color: #94a3b8;
+		color: rgba(190, 231, 214, 0.85);
 	}
 
 	.manual-files {
@@ -963,8 +969,8 @@
 		gap: 1rem;
 		padding: 1rem;
 		border-radius: 0.75rem;
-		background: rgba(15, 23, 42, 0.7);
-		border: 1px solid rgba(148, 163, 184, 0.2);
+		background: rgba(8, 18, 15, 0.9);
+		border: 1px solid rgba(92, 149, 122, 0.35);
 	}
 
 	.manual-file-name {
@@ -978,7 +984,7 @@
 	}
 
 	.manual-file-actions a {
-		color: #93c5fd;
+		color: #8df9c1;
 		text-decoration: none;
 		font-size: 0.9rem;
 	}
@@ -987,8 +993,8 @@
 		border: none;
 		padding: 0.5rem 0.85rem;
 		border-radius: 0.5rem;
-		background: rgba(59, 130, 246, 0.15);
-		color: #bfdbfe;
+		background: rgba(63, 208, 139, 0.15);
+		color: #aefcd5;
 		cursor: pointer;
 	}
 

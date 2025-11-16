@@ -226,7 +226,35 @@ function parseApiResponse(apiResponse) {
 }
 
 /**
+ * Get current user's email for identity resolution
+ */
+function getCurrentUserEmail() {
+  try {
+    return Session.getActiveUser().getEmail();
+  } catch (e) {
+    Logger.log("Could not get user email: " + e.toString());
+    return null;
+  }
+}
+
+/**
+ * Detect MCP mentions in message (e.g., @gdrive, @github)
+ */
+function detectMCPMentions(message) {
+  var mentionRegex = /@(\w+)/g;
+  var mentions = [];
+  var match;
+
+  while ((match = mentionRegex.exec(message)) !== null) {
+    mentions.push(match[1]);
+  }
+
+  return mentions;
+}
+
+/**
  * Calls the real chat API endpoint.
+ * Enhanced with MCP support and identity resolution
  * @param {string} userMessage - The user's message
  * @param {string} spreadsheetUrl - The full URL of the spreadsheet
  * @param {string} sheetTitle - The name of the active sheet
@@ -236,7 +264,16 @@ function parseApiResponse(apiResponse) {
 function callChatApi(userMessage, spreadsheetUrl, sheetTitle, sessionId) {
   var apiUrl = "https://fintech-hackathon-production.up.railway.app/chat";
 
-  // Build the request payload
+  // Get user email and detect MCP mentions
+  var userEmail = getCurrentUserEmail();
+  var mcpMentions = detectMCPMentions(userMessage);
+
+  // Log MCP mentions if any
+  if (mcpMentions && mcpMentions.length > 0) {
+    Logger.log('Detected MCP mentions: ' + mcpMentions.join(', '));
+  }
+
+  // Build the request payload with MCP support
   var payload = {
     messages: [
       {
@@ -249,7 +286,9 @@ function callChatApi(userMessage, spreadsheetUrl, sheetTitle, sessionId) {
       spreadsheetId: spreadsheetUrl,
       sheetTitle: sheetTitle,
     },
-    sessionId: sessionId,
+    sessionId: sessionId || generateSessionId(),
+    googleEmail: userEmail,  // For identity resolution
+    mcpMentions: mcpMentions  // Detected @mentions for MCP routing
   };
 
   // Set up request options
