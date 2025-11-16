@@ -134,6 +134,45 @@
 			</p>
 		</div>
 	{/if}
+
+	<div class="about-section">
+		<div class="about-section__eyebrow-row">
+			<p class="about-section__eyebrow">About Mangler</p>
+			<span class="about-section__badge">Open Source</span>
+		</div>
+		<h2>Your intelligent spreadsheet guardian</h2>
+		<p class="about-section__text">
+			Mangler is an AI-powered operational console that keeps your Google Sheets honest. It continuously monitors, validates, and optimizes your spreadsheets so your team can focus on making decisions, not debugging formulas.
+		</p>
+		<div class="about-section__actions">
+			<a class="dashboard__btn dashboard__btn--primary" href="/login">Get started</a>
+			<a class="dashboard__btn dashboard__btn--secondary" href="https://github.com/noppud/mangler.finance" target="_blank" rel="noopener noreferrer">
+				<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" width="20" height="20">
+					<path d="M12 0C5.37 0 0 5.37 0 12c0 5.31 3.435 9.795 8.205 11.385.6.105.825-.255.825-.57 0-.285-.015-1.23-.015-2.235-3.015.555-3.795-.735-4.035-1.41-.135-.345-.72-1.41-1.23-1.695-.42-.225-1.02-.78-.015-.795.945-.015 1.62.87 1.845 1.23 1.08 1.815 2.805 1.305 3.495.99.105-.78.42-1.305.765-1.605-2.67-.3-5.46-1.335-5.46-5.925 0-1.305.465-2.385 1.23-3.225-.12-.3-.54-1.53.12-3.18 0 0 1.005-.315 3.3 1.23.96-.27 1.98-.405 3-.405s2.04.135 3 .405c2.295-1.56 3.3-1.23 3.3-1.23.66 1.65.24 2.88.12 3.18.765.84 1.23 1.905 1.23 3.225 0 4.605-2.805 5.625-5.475 5.925.435.375.81 1.095.81 2.22 0 1.605-.015 2.895-.015 3.3 0 .315.225.69.825.57A12.02 12.02 0 0024 12c0-6.63-5.37-12-12-12z"/>
+				</svg>
+				View on GitHub
+			</a>
+			<a class="dashboard__btn dashboard__btn--ghost" href="/extension">Get Chrome extension</a>
+		</div>
+		<div class="about-section__stats">
+			<div class="about-section__stat">
+				<p class="about-section__stat-value">10,000+</p>
+				<p class="about-section__stat-label">Sheets analyzed</p>
+			</div>
+			<div class="about-section__stat">
+				<p class="about-section__stat-value">99.9%</p>
+				<p class="about-section__stat-label">Uptime</p>
+			</div>
+			<div class="about-section__stat">
+				<p class="about-section__stat-value"><100ms</p>
+				<p class="about-section__stat-label">Response time</p>
+			</div>
+			<div class="about-section__stat">
+				<p class="about-section__stat-value">24/7</p>
+				<p class="about-section__stat-label">Monitoring</p>
+			</div>
+		</div>
+	</div>
 </section>
 
 <style>
@@ -408,6 +447,96 @@
 		font-size: 0.9rem;
 	}
 
+	.about-section {
+		margin-top: 3rem;
+		padding: clamp(2rem, 4vw, 3.5rem);
+		border-radius: 2rem;
+		background: radial-gradient(circle at top left, rgba(53, 255, 184, 0.18), transparent 55%),
+			linear-gradient(135deg, rgba(6, 16, 12, 0.95), rgba(16, 39, 31, 0.9));
+		border: 1px solid rgba(85, 193, 151, 0.35);
+		box-shadow: 0 45px 80px rgba(3, 10, 8, 0.65);
+	}
+
+	.about-section__eyebrow-row {
+		display: flex;
+		align-items: center;
+		gap: 0.75rem;
+		margin-bottom: 1rem;
+	}
+
+	.about-section__eyebrow {
+		font-size: 0.85rem;
+		text-transform: uppercase;
+		letter-spacing: 0.35em;
+		color: rgba(183, 246, 218, 0.6);
+		margin: 0;
+	}
+
+	.about-section__badge {
+		padding: 0.25rem 0.75rem;
+		border-radius: 999px;
+		font-size: 0.75rem;
+		text-transform: uppercase;
+		letter-spacing: 0.2em;
+		background: rgba(60, 236, 163, 0.15);
+		border: 1px solid rgba(60, 236, 163, 0.5);
+		color: #c9ffe7;
+	}
+
+	.about-section h2 {
+		font-size: clamp(2rem, 3.5vw, 2.8rem);
+		margin: 0 0 1rem;
+		color: #f6fff9;
+		letter-spacing: -0.04em;
+	}
+
+	.about-section__text {
+		font-size: 1.1rem;
+		color: rgba(221, 248, 237, 0.85);
+		margin-bottom: 2rem;
+		line-height: 1.7;
+		max-width: 65ch;
+	}
+
+	.about-section__actions {
+		display: flex;
+		flex-wrap: wrap;
+		gap: 0.75rem;
+		margin-bottom: 2.5rem;
+		align-items: center;
+	}
+
+	.about-section__actions svg {
+		margin-right: 0.25rem;
+	}
+
+	.about-section__stats {
+		display: grid;
+		grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
+		gap: 1rem;
+		padding-top: 2rem;
+		border-top: 1px solid rgba(85, 193, 151, 0.25);
+	}
+
+	.about-section__stat {
+		text-align: center;
+	}
+
+	.about-section__stat-value {
+		margin: 0;
+		font-size: clamp(1.5rem, 3vw, 2rem);
+		font-weight: 700;
+		color: #4ef0b2;
+	}
+
+	.about-section__stat-label {
+		margin: 0.25rem 0 0;
+		font-size: 0.85rem;
+		text-transform: uppercase;
+		letter-spacing: 0.15em;
+		color: rgba(183, 246, 218, 0.7);
+	}
+
 	@media (max-width: 900px) {
 		.dashboard__grid {
 			grid-template-columns: 1fr;
@@ -415,6 +544,15 @@
 
 		.dashboard__actions {
 			flex-direction: column;
+		}
+
+		.about-section__actions {
+			flex-direction: column;
+			width: 100%;
+		}
+
+		.about-section__actions .dashboard__btn {
+			width: 100%;
 		}
 	}
 </style>
