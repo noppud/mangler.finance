@@ -469,16 +469,18 @@
 		overflow-x: visible;
 		padding-right: 0.5rem;
 		position: relative;
-		z-index: 1;
+		z-index: 2;
+		scrollbar-width: none;
 	}
 
 	.sheet-sidebar::-webkit-scrollbar {
-		width: 4px;
+		width: 0;
+		height: 0;
 	}
 
 	.sheet-sidebar::-webkit-scrollbar-thumb {
-		background: rgba(84, 141, 122, 0.4);
-		border-radius: 2px;
+		background: transparent;
+		border-radius: 0;
 	}
 
 	.sheet-card {
@@ -591,6 +593,8 @@
 		box-shadow: 0 35px 55px rgba(0, 0, 0, 0.55);
 		height: 100%;
 		overflow: hidden;
+		position: relative;
+		z-index: 1;
 	}
 
 	.sheet-chat__header {
