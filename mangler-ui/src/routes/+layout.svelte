@@ -8,6 +8,7 @@
 
 	const navLinks = [
 		{ href: '/', label: 'Overview' },
+		{ href: '/pricing', label: 'Pricing' },
 		{ href: '/chat', label: 'Sheet Mangler' },
 		{ href: '/extension', label: 'Extension' }
 	];
@@ -27,7 +28,7 @@
 
 		<nav class="app-header__nav" aria-label="Primary">
 			{#each navLinks as link}
-				{#if data?.isAuthenticated || link.href === '/'}
+				{#if data?.isAuthenticated || link.href === '/' || link.href === '/pricing'}
 					<a
 						href={link.href}
 						class={`app-header__nav-link ${$page.url.pathname === link.href ? 'is-active' : ''}`.trim()}
