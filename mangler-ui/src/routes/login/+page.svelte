@@ -28,7 +28,7 @@
 				<p class="dashboard__eyebrow">Operational console</p>
 				<span class="dashboard__badge">Beta workspace</span>
 			</div>
-			<h1>Agents that keep your Google Sheets honest</h1>
+			<h1>Agents that keep your Google Sheets sharp</h1>
 			<p class="dashboard__copy">
 				Mangler embeds an always-on operator inside the spreadsheets your team trusts. It rewrites formulas, tags anomalies and routes escalations so humans can focus on decisions, not cells.
 			</p>

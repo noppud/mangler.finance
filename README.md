@@ -1,5 +1,7 @@
 # Mangler / Sheet Mangler Monorepo
 
+🔗 **Live at [mangler.finance](https://mangler.finance)**
+
 Agentic assistant for Google Sheets that can inspect, repair, and create spreadsheets using LLMs, with a web UI, Google Sheets sidebar, and REST API.
 
 This repo hosts all major parts of the Mangler stack:

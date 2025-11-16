@@ -142,7 +142,7 @@
 		</div>
 		<h2>Your intelligent spreadsheet guardian</h2>
 		<p class="about-section__text">
-			Mangler is an AI-powered operational console that keeps your Google Sheets honest. It continuously monitors, validates, and optimizes your spreadsheets so your team can focus on making decisions, not debugging formulas.
+			Mangler is an AI-powered operational console that keeps your Google Sheets sharp. It continuously monitors, validates, and optimizes your spreadsheets so your team can focus on making decisions, not debugging formulas.
 		</p>
 		<div class="about-section__actions">
 			<a class="dashboard__btn dashboard__btn--primary" href="/login">Get started</a>
