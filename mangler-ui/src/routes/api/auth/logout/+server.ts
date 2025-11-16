@@ -1,8 +1,7 @@
 import { kindeAuthClient } from '@kinde-oss/kinde-auth-sveltekit';
 import type { RequestHandler } from './$types';
 import { env } from '$env/dynamic/private';
-import { redirect } from '@sveltejs/kit';
-import type { SessionManager } from '@kinde-oss/kinde-typescript-sdk';
+import { redirect, error } from '@sveltejs/kit';
 
 const resolveLogoutRedirect = () => {
 	return (
@@ -13,13 +12,19 @@ const resolveLogoutRedirect = () => {
 };
 
 export const GET: RequestHandler = async (event) => {
-	const url = await kindeAuthClient.logout(event as unknown as SessionManager);
-	const redirectTarget = resolveLogoutRedirect();
+	const redirectTarget = resolveLogoutRedirect() || '/';
 
-	if (redirectTarget) {
+	try {
+		const url = await kindeAuthClient.logout(
+			event as Parameters<typeof kindeAuthClient.logout>[0]
+		);
+
 		url.searchParams.set('post_logout_redirect_uri', redirectTarget);
 		url.searchParams.set('logout_redirect_url', redirectTarget);
-	}
 
-	throw redirect(302, url.toString());
+		throw redirect(302, url.toString());
+	} catch (err) {
+		console.error('Logout error', err);
+		throw redirect(302, redirectTarget);
+	}
 };

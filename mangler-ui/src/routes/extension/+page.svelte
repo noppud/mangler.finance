@@ -40,6 +40,11 @@
 	let googleAuthError = $state('');
 	let googleScriptPromise: Promise<void> | null = null;
 
+	function resetGoogleToken() {
+		googleAccessToken = '';
+		googleTokenExpiry = 0;
+	}
+
 	function extractSpreadsheetId(url: string): string | null {
 		// Extract ID from URL like: https://docs.google.com/spreadsheets/d/1abc.../edit
 		const match = url.match(/\/spreadsheets\/d\/([a-zA-Z0-9-_]+)/);
@@ -117,9 +122,15 @@
 					return;
 				}
 
-				client.requestAccessToken({
-					prompt: forcePrompt || !googleAccessToken ? 'consent' : ''
-				});
+				const requestConfig: { prompt?: string; scope: string } = {
+					scope: GOOGLE_OAUTH_SCOPE
+				};
+
+				if (forcePrompt || !googleAccessToken) {
+					requestConfig.prompt = 'consent';
+				}
+
+				client.requestAccessToken(requestConfig);
 			} catch (err: any) {
 				reject(err);
 			}
@@ -203,12 +214,23 @@
 				successMessage = result.message || 'Extension installed successfully!';
 				step = 'success';
 			} else {
+				const scopeError =
+					/ACCESS_TOKEN_SCOPE_INSUFFICIENT|insufficient authentication scopes/i.test(
+						result.message || result.error || ''
+					);
+
+				if (scopeError) {
+					resetGoogleToken();
+					googleAuthError =
+						'Google authorization is missing the required Apps Script permissions. Please accept the Google prompt again when you retry.';
+				}
+
 				installFailed = true;
 				errorMessage = result.message || result.error || 'Installation failed';
 				step = 'error';
 			}
 		} catch (err: any) {
-			installFailed = true;
+			resetGoogleToken();
 			errorMessage = `Installation failed: ${err.message || err}`;
 			step = 'error';
 		}
