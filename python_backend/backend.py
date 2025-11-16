@@ -1,15 +1,12 @@
 from __future__ import annotations
 
 from abc import ABC, abstractmethod
-from typing import Optional
 
 from .models import ChatRequest, ChatResponse
 from .orchestrator import AgentOrchestrator
 from .llm import create_llm_client
 from .sheets_client import ServiceAccountSheetsClient
 from .context_builder import ContextBuilder
-from .mcp_registry import MCPRegistry
-from .rate_limiter import MCPRateLimiter
 
 
 class ChatBackend(ABC):
@@ -20,7 +17,7 @@ class ChatBackend(ABC):
   """
 
   @abstractmethod
-  async def send_chat(self, request: ChatRequest) -> ChatResponse:  # pragma: no cover - interface
+  def send_chat(self, request: ChatRequest) -> ChatResponse:  # pragma: no cover - interface
     raise NotImplementedError
 
 

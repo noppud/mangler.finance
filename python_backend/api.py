@@ -14,7 +14,7 @@ from typing import Any, Dict, List, Optional
 
 from importlib import resources
 
-from fastapi import FastAPI, HTTPException, Request, Response, APIRouter, Depends, Header
+from fastapi import FastAPI, HTTPException, Request, Response
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel
@@ -23,18 +23,9 @@ from google.oauth2.credentials import Credentials as OAuthCredentials
 from .backend import PythonChatBackend
 from .logging_config import get_logger
 from .memory import ConversationStore
-from .models import (
-    ChatRequest, ChatResponse,
-    MCPConfiguration, MCPConfigurationCreate, MCPConfigurationUpdate,
-    MCPConfigurationList, MCPTool, UserIdentityLink, UserIdentityLinkCreate,
-    IdentityResolveRequest, IdentityResolveResponse
-)
+from .models import ChatRequest, ChatResponse
 from .service import ChatService
 from .sheets_client import ServiceAccountSheetsClient
-from .mcp_registry import get_mcp_registry
-from .rate_limiter import get_rate_limiter
-from .identity_resolver import get_identity_resolver
-from .supabase_client import get_supabase_client
 
 # Initialize logger
 logger = get_logger(__name__)
@@ -347,270 +338,6 @@ async def root():
 async def health():
     """Health check endpoint."""
     return {"status": "healthy", "timestamp": _dt.datetime.utcnow().isoformat() + "Z"}
-
-
-# ============================================================================
-# MCP & Identity Management Endpoints
-# ============================================================================
-
-# Helper to extract Kinde user ID from JWT
-async def get_current_user_id(authorization: Optional[str] = Header(None)) -> str:
-    """
-    Extract user_id from Kinde JWT token.
-    TODO: Implement proper JWT validation with Kinde public key
-    """
-    if not authorization:
-        raise HTTPException(status_code=401, detail="Not authenticated")
-
-    # For now, simple Bearer token parsing
-    # In production, validate JWT signature with Kinde public key
-    try:
-        token = authorization.replace("Bearer ", "")
-        # Decode JWT without verification (INSECURE - for development only)
-        import jwt
-        payload = jwt.decode(token, options={"verify_signature": False})
-        user_id = payload.get("sub")
-
-        if not user_id:
-            raise HTTPException(status_code=401, detail="Invalid token")
-
-        return user_id
-
-    except Exception as e:
-        logger.error(f"Failed to parse token: {e}")
-        raise HTTPException(status_code=401, detail="Invalid token")
-
-
-# MCP Configuration Router
-mcp_router = APIRouter(prefix="/mcp", tags=["mcp"])
-
-
-@mcp_router.get("/configurations", response_model=MCPConfigurationList)
-async def list_mcp_configurations(user_id: str = Depends(get_current_user_id)):
-    """List all MCP configurations for the current user"""
-    supabase = get_supabase_client()
-    if not supabase:
-        raise HTTPException(status_code=500, detail="Database not configured")
-
-    try:
-        result = supabase.table("mcp_configurations")\
-            .select("*")\
-            .eq("user_id", user_id)\
-            .order("created_at", desc=True)\
-            .execute()
-
-        configs = [MCPConfiguration(**row) for row in result.data]
-
-        return MCPConfigurationList(
-            configurations=configs,
-            total=len(configs),
-            max_allowed=5
-        )
-
-    except Exception as e:
-        logger.error(f"Failed to list MCP configurations: {e}")
-        raise HTTPException(status_code=500, detail="Failed to fetch configurations")
-
-
-@mcp_router.post("/configurations", response_model=MCPConfiguration)
-async def create_mcp_configuration(
-    config: MCPConfigurationCreate,
-    user_id: str = Depends(get_current_user_id)
-):
-    """Create a new MCP configuration"""
-    supabase = get_supabase_client()
-    if not supabase:
-        raise HTTPException(status_code=500, detail="Database not configured")
-
-    try:
-        # Check if user already has 5 MCPs
-        count_result = supabase.table("mcp_configurations")\
-            .select("id", count="exact")\
-            .eq("user_id", user_id)\
-            .execute()
-
-        if count_result.count >= 5:
-            raise HTTPException(
-                status_code=400,
-                detail="Maximum 5 MCP configurations allowed per user"
-            )
-
-        # Create configuration
-        data = {
-            "user_id": user_id,
-            **config.dict()
-        }
-
-        result = supabase.table("mcp_configurations").insert(data).execute()
-
-        logger.info(f"Created MCP configuration {config.name} for user {user_id}")
-
-        return MCPConfiguration(**result.data[0])
-
-    except HTTPException:
-        raise
-    except Exception as e:
-        logger.error(f"Failed to create MCP configuration: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
-
-
-@mcp_router.patch("/configurations/{config_id}", response_model=MCPConfiguration)
-async def update_mcp_configuration(
-    config_id: str,
-    update: MCPConfigurationUpdate,
-    user_id: str = Depends(get_current_user_id)
-):
-    """Update an existing MCP configuration"""
-    supabase = get_supabase_client()
-    if not supabase:
-        raise HTTPException(status_code=500, detail="Database not configured")
-
-    try:
-        # Verify ownership
-        existing = supabase.table("mcp_configurations")\
-            .select("*")\
-            .eq("id", config_id)\
-            .eq("user_id", user_id)\
-            .execute()
-
-        if not existing.data:
-            raise HTTPException(status_code=404, detail="Configuration not found")
-
-        # Update
-        update_data = {k: v for k, v in update.dict().items() if v is not None}
-
-        if not update_data:
-            # No changes
-            return MCPConfiguration(**existing.data[0])
-
-        result = supabase.table("mcp_configurations")\
-            .update(update_data)\
-            .eq("id", config_id)\
-            .execute()
-
-        # If enabled status changed, reload user's MCPs
-        if "enabled" in update_data:
-            registry = get_mcp_registry()
-            await registry.load_user_mcps(user_id, force_reload=True)
-
-        logger.info(f"Updated MCP configuration {config_id} for user {user_id}")
-
-        return MCPConfiguration(**result.data[0])
-
-    except HTTPException:
-        raise
-    except Exception as e:
-        logger.error(f"Failed to update MCP configuration: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
-
-
-@mcp_router.delete("/configurations/{config_id}")
-async def delete_mcp_configuration(
-    config_id: str,
-    user_id: str = Depends(get_current_user_id)
-):
-    """Delete an MCP configuration"""
-    supabase = get_supabase_client()
-    if not supabase:
-        raise HTTPException(status_code=500, detail="Database not configured")
-
-    try:
-        result = supabase.table("mcp_configurations")\
-            .delete()\
-            .eq("id", config_id)\
-            .eq("user_id", user_id)\
-            .execute()
-
-        if not result.data:
-            raise HTTPException(status_code=404, detail="Configuration not found")
-
-        # Reload user's MCPs
-        registry = get_mcp_registry()
-        await registry.load_user_mcps(user_id, force_reload=True)
-
-        logger.info(f"Deleted MCP configuration {config_id} for user {user_id}")
-
-        return {"success": True}
-
-    except HTTPException:
-        raise
-    except Exception as e:
-        logger.error(f"Failed to delete MCP configuration: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
-
-
-@mcp_router.get("/tools", response_model=List[MCPTool])
-async def list_available_mcp_tools(user_id: str = Depends(get_current_user_id)):
-    """List all tools available from user's enabled MCPs"""
-    try:
-        registry = get_mcp_registry()
-        tools = await registry.get_user_tools(user_id)
-        return tools
-
-    except Exception as e:
-        logger.error(f"Failed to list MCP tools: {e}")
-        raise HTTPException(status_code=500, detail="Failed to fetch tools")
-
-
-# Identity Linking Router
-identity_router = APIRouter(prefix="/identity", tags=["identity"])
-
-
-@identity_router.post("/link", response_model=UserIdentityLink)
-async def create_identity_link(
-    link_request: UserIdentityLinkCreate,
-    user_id: str = Depends(get_current_user_id)
-):
-    """Create identity link between Kinde user and Google account"""
-    try:
-        resolver = get_identity_resolver()
-        link = await resolver.create_link(
-            kinde_user_id=user_id,
-            google_email=link_request.google_email,
-            google_sub=link_request.google_sub
-        )
-        return link
-
-    except Exception as e:
-        logger.error(f"Failed to create identity link: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
-
-
-@identity_router.delete("/link")
-async def delete_identity_link(user_id: str = Depends(get_current_user_id)):
-    """Delete identity link for current user"""
-    try:
-        resolver = get_identity_resolver()
-        success = await resolver.delete_link(user_id)
-
-        if not success:
-            raise HTTPException(status_code=404, detail="No identity link found")
-
-        return {"success": True}
-
-    except HTTPException:
-        raise
-    except Exception as e:
-        logger.error(f"Failed to delete identity link: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
-
-
-@identity_router.post("/resolve", response_model=IdentityResolveResponse)
-async def resolve_identity(request: IdentityResolveRequest):
-    """Resolve Google email to Kinde user ID (public endpoint for Apps Script)"""
-    try:
-        resolver = get_identity_resolver()
-        response = await resolver.resolve_google_to_kinde(request.google_email)
-        return response
-
-    except Exception as e:
-        logger.error(f"Failed to resolve identity: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
-
-
-# Register routers
-app.include_router(mcp_router)
-app.include_router(identity_router)
 
 
 # * ============================================================================
@@ -2336,16 +2063,6 @@ async def install_extension(request: InstallExtensionRequest) -> Dict[str, Any]:
     except Exception as e:
         logger.error(f"Error installing extension: {e}")
         raise HTTPException(status_code=500, detail=str(e))
-
-
-# Graceful shutdown for MCP servers
-@app.on_event("shutdown")
-async def shutdown_event():
-    """Gracefully shutdown all MCP servers on app shutdown"""
-    logger.info("Shutting down application...")
-    registry = get_mcp_registry()
-    await registry.shutdown_all()
-    logger.info("Application shutdown complete")
 
 
 @app.get("/extension/service-account-email")

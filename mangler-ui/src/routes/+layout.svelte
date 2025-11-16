@@ -18,12 +18,6 @@
 		</div>
 
 		{#if data?.isAuthenticated}
-			<nav class="app-header__nav">
-				<a href="/" class="app-header__nav-link">Dashboard</a>
-				<a href="/mcp" class="app-header__nav-link">MCPs</a>
-				<a href="/settings/identity" class="app-header__nav-link">Identity</a>
-				<a href="/extension" class="app-header__nav-link">Extension</a>
-			</nav>
 			<div class="app-header__user">
 				<span class="app-header__email">{data.user?.email}</span>
 				<a class="app-header__link" href="/api/auth/logout" data-sveltekit-reload>Logout</a>
@@ -83,28 +77,6 @@
 		font-size: clamp(1.2rem, 2vw, 1.75rem);
 		letter-spacing: 0.08em;
 		text-transform: uppercase;
-	}
-
-	.app-header__nav {
-		display: flex;
-		align-items: center;
-		gap: 1.5rem;
-		flex: 1;
-		justify-content: center;
-	}
-
-	.app-header__nav-link {
-		text-decoration: none;
-		color: #9eb7ae;
-		font-weight: 500;
-		padding: 0.5rem 1rem;
-		border-radius: 0.5rem;
-		transition: all 0.2s ease;
-	}
-
-	.app-header__nav-link:hover {
-		color: #bffcd8;
-		background: rgba(94, 115, 110, 0.2);
 	}
 
 	.app-header__user {

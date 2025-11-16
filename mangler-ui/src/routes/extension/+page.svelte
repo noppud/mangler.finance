@@ -109,7 +109,20 @@
 				const result = await response.json();
 
 				if (!response.ok) {
-					throw new Error(result?.detail || 'Unable to register as OAuth tester.');
+					// OAuth consent screen not configured - this is OK, installation can still proceed
+					// User will need to manually add themselves as a tester in GCP Console
+					const errorMsg = result?.detail || 'Unable to register as OAuth tester.';
+
+					// Check if it's the OAuth consent screen error
+					if (errorMsg.includes('OAuth consent screen not configured')) {
+						testerStatus = 'error';
+						testerError = errorMsg;
+						// Return true anyway - installation can proceed without this
+						console.warn('OAuth tester registration failed (consent screen not configured), but installation can continue:', errorMsg);
+						return true;
+					}
+
+					throw new Error(errorMsg);
 				}
 
 				testerStatus = 'success';
@@ -117,7 +130,9 @@
 			} catch (err: any) {
 				testerStatus = 'error';
 				testerError = err?.message || 'Failed to register as OAuth tester.';
-				return false;
+				// Allow installation to proceed even if tester registration fails
+				console.warn('OAuth tester registration failed, but installation can continue:', err);
+				return true;
 			} finally {
 				testerPromise = null;
 			}
@@ -405,8 +420,25 @@
 						You're authorized to approve the Mangler extension install.
 					</div>
 				{:else if testerStatus === 'error'}
-					<div class="tester-notice tester-notice--error">
-						We couldn't add your account to the tester list. {testerError}
+					<div class="tester-notice tester-notice--warning">
+						<strong>⚠️ OAuth Tester Registration Skipped</strong>
+						<p style="margin-top: 0.5rem; font-size: 0.9em;">
+							We couldn't automatically add you to the OAuth tester list. You can still install the extension,
+							but you'll need to manually add your email ({data?.user?.email}) as a test user in the
+							<a
+								href="https://console.cloud.google.com/apis/credentials/consent?project=fintech-hackathon-478313"
+								target="_blank"
+								rel="noopener noreferrer"
+								style="color: #4ADE80; text-decoration: underline;"
+							>
+								Google Cloud Console
+							</a>
+							after installation.
+						</p>
+						<details style="margin-top: 0.5rem; font-size: 0.85em; opacity: 0.8;">
+							<summary style="cursor: pointer;">Technical details</summary>
+							<p style="margin-top: 0.25rem;">{testerError}</p>
+						</details>
 					</div>
 				{/if}
 
@@ -722,6 +754,21 @@
 		background: rgba(248, 113, 113, 0.12);
 		border: 1px solid rgba(248, 113, 113, 0.35);
 		color: #fecaca;
+	}
+
+	.tester-notice--warning {
+		background: rgba(251, 191, 36, 0.12);
+		border: 1px solid rgba(251, 191, 36, 0.4);
+		color: #fde68a;
+	}
+
+	.tester-notice--warning a {
+		color: #4ADE80;
+		text-decoration: underline;
+	}
+
+	.tester-notice--warning a:hover {
+		color: #86EFAC;
 	}
 
 	.url-input {
