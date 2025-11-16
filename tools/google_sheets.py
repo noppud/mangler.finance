@@ -17,7 +17,23 @@ from dotenv import load_dotenv
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 load_dotenv(PROJECT_ROOT / ".env")
 
-DEFAULT_CREDENTIALS_PATH = PROJECT_ROOT / "client_secret_138285220800-9425b585vgk9rcglfc8fpejomgr7ar4l.apps.googleusercontent.com.json"
+_CREDENTIAL_CANDIDATES = [
+    os.environ.get("GOOGLE_SERVICE_ACCOUNT_FILE"),
+    os.environ.get("DEFAULT_CREDENTIALS_PATH"),
+    PROJECT_ROOT / "client_secret_138285220800-9425b585vgk9rcglfc8fpejomgr7ar4l.apps.googleusercontent.com.json",
+    PROJECT_ROOT / "python_backend" / "client_secret_138285220800-9425b585vgk9rcglfc8fpejomgr7ar4l.apps.googleusercontent.com.json",
+]
+DEFAULT_CREDENTIALS_PATH = None
+for candidate in _CREDENTIAL_CANDIDATES:
+    if not candidate:
+        continue
+    candidate_path = Path(candidate).expanduser()
+    if candidate_path.exists():
+        DEFAULT_CREDENTIALS_PATH = candidate_path
+        break
+if DEFAULT_CREDENTIALS_PATH is None:
+    DEFAULT_CREDENTIALS_PATH = Path(_CREDENTIAL_CANDIDATES[2]).expanduser()
+
 DEFAULT_SPREADSHEET_URL = os.environ.get("SPREADSHEET_URL", "")
 SCOPES = ["https://www.googleapis.com/auth/spreadsheets"]
 
@@ -39,9 +55,15 @@ class GoogleSheetsFormulaValidator:
 
         # * Try cached token first (OAuth2)
         if token_path.exists():
-            credentials = UserCredentials.from_authorized_user_file(token_path, SCOPES)
-            if credentials.expired and credentials.refresh_token:
-                credentials.refresh(Request())
+            try:
+                credentials = UserCredentials.from_authorized_user_file(token_path, SCOPES)
+                if credentials.expired and credentials.refresh_token:
+                    credentials.refresh(Request())
+                # Drop cached credentials that cannot refresh
+                if not credentials.refresh_token and not credentials.valid:
+                    credentials = None
+            except (ValueError, KeyError):
+                credentials = None
 
         # * Try service account
         if not credentials:

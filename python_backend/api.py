@@ -47,6 +47,11 @@ except ImportError:  # pragma: no cover - optional tools
     DEFAULT_SPREADSHEET_URL = ""  # type: ignore[assignment]
     GoogleSheetsFormulaValidator = None  # type: ignore[assignment]
 
+try:
+    from tools.visulize_formulas import visualize_formulas
+except ImportError:  # pragma: no cover - optional tools
+    visualize_formulas = None  # type: ignore[assignment]
+
 # * Environment
 from dotenv import load_dotenv
 load_dotenv(PROJECT_ROOT / ".env")
@@ -391,6 +396,11 @@ class UpdateCellsResponse(BaseModel):
     failed_updates: Optional[List[Dict[str, str]]] = None
 
 
+class VisualizeFormulasRequest(BaseModel):
+    """Request to visualize formulas and hard-coded values."""
+    sheet_url: Optional[str] = None
+
+
 # * ============================================================================
 # * Chat Endpoint
 # * ============================================================================
@@ -433,6 +443,64 @@ async def chat(request: ChatRequest) -> ChatResponse:
           extra={"session_id": request.sessionId}
       )
       raise
+
+
+# * ============================================================================
+# * Formula Visualization Tool Endpoint
+# * ============================================================================
+
+@app.post("/tools/visualize_formulas")
+async def visualize_formulas_endpoint(
+    request: VisualizeFormulasRequest,
+) -> Dict[str, Any]:
+    """Invoke visualize_formulas tool to color-code formulas and values."""
+    logger.info(
+        "Visualize formulas request received",
+        extra={
+            "has_custom_sheet_url": bool(request.sheet_url),
+            "default_sheet_available": bool(DEFAULT_SPREADSHEET_URL),
+        },
+    )
+
+    if GoogleSheetsFormulaValidator is None or visualize_formulas is None:
+        logger.error(
+            "503 Service Unavailable: visualize_formulas tool not available",
+            extra={
+                "credentials_path": str(DEFAULT_CREDENTIALS_PATH) if DEFAULT_CREDENTIALS_PATH else "(missing)",
+            },
+        )
+        raise HTTPException(
+            status_code=503,
+            detail="Formula visualization tool is not available on this deployment.",
+        )
+
+    sheet_url = (request.sheet_url or DEFAULT_SPREADSHEET_URL or "").strip()
+    if not sheet_url:
+        logger.error("Visualize formulas request missing sheet_url and no default configured")
+        raise HTTPException(
+            status_code=400,
+            detail="Sheet URL is required when no default spreadsheet is configured.",
+        )
+
+    try:
+        result = visualize_formulas(sheet_url)
+        logger.info(
+            "Visualize formulas completed",
+            extra={
+                "sheet_url": sheet_url,
+                "snapshot_batch_id": result.get("snapshot_batch_id"),
+                "colored_cells": result.get("count"),
+                "status": result.get("status"),
+            },
+        )
+        return result
+    except Exception as exc:
+        logger.error(
+            f"Visualize formulas failed: {exc}",
+            exc_info=True,
+            extra={"sheet_url": sheet_url},
+        )
+        raise HTTPException(status_code=400, detail=str(exc))
 
 
 # * ============================================================================
