@@ -1,0 +1,923 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <base target="_top" />
+    <style>
+      /* Layout */
+      html,
+      body {
+        height: 100%;
+        margin: 0;
+        padding: 0;
+        font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI",
+          sans-serif;
+        background: #f1f3f4; /* Google-y light gray */
+      }
+
+      .copilot-container {
+        display: flex;
+        flex-direction: column;
+        height: 100vh;
+        box-sizing: border-box;
+        padding: 8px;
+        background: #f1f3f4;
+        color: #202124;
+      }
+
+      /* Top bar with options menu (no title text, Apps Script title is enough) */
+      .top-bar {
+        display: flex;
+        align-items: center;
+        justify-content: flex-end;
+        margin-bottom: 8px;
+      }
+
+      .menu-wrapper {
+        position: relative;
+      }
+
+      .menu-button {
+        width: 28px;
+        height: 28px;
+        border-radius: 50%;
+        border: none;
+        cursor: pointer;
+        background: transparent;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+      }
+
+      .menu-button:hover {
+        background: rgba(60, 64, 67, 0.08);
+      }
+
+      .menu-dots {
+        font-size: 18px;
+        line-height: 1;
+        color: #5f6368;
+      }
+
+      .menu-dropdown {
+        position: absolute;
+        right: 0;
+        top: 32px;
+        min-width: 140px;
+        background: #ffffff;
+        border-radius: 4px;
+        box-shadow: 0 1px 3px rgba(60, 64, 67, 0.3);
+        border: 1px solid rgba(60, 64, 67, 0.15);
+        padding: 4px 0;
+        z-index: 10;
+        display: none;
+      }
+
+      .menu-dropdown.menu-open {
+        display: block;
+      }
+
+      .menu-item {
+        width: 100%;
+        padding: 8px 16px;
+        border: none;
+        background: transparent;
+        text-align: left;
+        font-size: 13px;
+        color: #202124;
+        cursor: pointer;
+      }
+
+      .menu-item:hover {
+        background: rgba(60, 64, 67, 0.08);
+      }
+
+      /* Chat window */
+      .chat-window {
+        flex: 1;
+        overflow-y: auto;
+        padding: 16px;
+        border-radius: 8px;
+        background: #ffffff;
+        box-shadow: 0 1px 3px rgba(60, 64, 67, 0.15);
+        border: 1px solid #dadce0;
+        margin-bottom: 8px;
+      }
+
+      .chat-row {
+        display: flex;
+        margin-bottom: 10px;
+      }
+
+      .chat-row--user {
+        justify-content: flex-end;
+      }
+
+      .chat-row--bot,
+      .chat-row--issue {
+        justify-content: flex-start;
+      }
+
+      .chat-bubble {
+        max-width: 80%;
+        padding: 10px 12px;
+        border-radius: 16px;
+        font-size: 13px;
+        line-height: 1.4;
+        word-wrap: break-word;
+        white-space: pre-wrap;
+      }
+
+      .chat-bubble--user {
+        background: #0f9d58; /* Google Sheets green */
+        color: #ffffff;
+        border-bottom-right-radius: 4px;
+      }
+
+      .chat-bubble--bot {
+        background: #f1f3f4;
+        color: #202124;
+        border: 1px solid #dadce0;
+        border-bottom-left-radius: 4px;
+      }
+
+      /* Input area */
+      .input-row {
+        display: flex;
+        margin-top: 0;
+        gap: 10px;
+        align-items: flex-end;
+        padding: 12px;
+        background: #ffffff;
+        border-radius: 12px;
+        box-shadow: 0 2px 8px rgba(60, 64, 67, 0.12);
+        border: 1px solid #e8eaed;
+      }
+
+      .input-row textarea {
+        flex: 1;
+        resize: vertical;
+        min-height: 52px;
+        max-height: 140px;
+        padding: 14px 16px;
+        border-radius: 24px;
+        border: 2px solid #e8eaed;
+        background: #f8f9fa;
+        color: #202124;
+        font-size: 14px;
+        font-family: inherit;
+        box-sizing: border-box;
+        transition: all 0.2s ease;
+        line-height: 1.5;
+      }
+
+      .input-row textarea::placeholder {
+        color: #9aa0a6;
+      }
+
+      .input-row textarea:focus {
+        outline: none;
+        border-color: #0f9d58;
+        background: #ffffff;
+        box-shadow: 0 0 0 3px rgba(15, 157, 88, 0.1);
+      }
+
+      .input-row button {
+        border: none;
+        border-radius: 24px;
+        padding: 14px 24px;
+        font-size: 14px;
+        cursor: pointer;
+        font-weight: 600;
+        background: linear-gradient(135deg, #0f9d58 0%, #0b7c43 100%);
+        color: #ffffff;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        white-space: nowrap;
+        min-height: 52px;
+        min-width: 80px;
+        box-shadow: 0 2px 6px rgba(15, 157, 88, 0.3);
+        transition: all 0.2s ease;
+        letter-spacing: 0.3px;
+      }
+
+      .input-row button:hover:not(:disabled) {
+        background: linear-gradient(135deg, #0b7c43 0%, #0a6b3a 100%);
+        box-shadow: 0 4px 12px rgba(15, 157, 88, 0.4);
+        transform: translateY(-1px);
+      }
+
+      .input-row button:active:not(:disabled) {
+        transform: translateY(0);
+        box-shadow: 0 2px 4px rgba(15, 157, 88, 0.3);
+      }
+
+      .input-row button:disabled {
+        background: #e8eaed;
+        color: #9aa0a6;
+        cursor: default;
+        box-shadow: none;
+        transform: none;
+      }
+
+      /* Issue cards */
+      .issue-card {
+        width: 100%;
+        box-sizing: border-box;
+        padding: 12px 14px;
+        border-radius: 8px;
+        background: #ffffff;
+        border: 1px solid #e8eaed;
+        border-left: 3px solid;
+        font-size: 12px;
+        color: #202124;
+        box-shadow: 0 1px 2px rgba(60, 64, 67, 0.08);
+        transition: all 0.2s ease;
+      }
+
+      .issue-card:hover {
+        box-shadow: 0 2px 4px rgba(60, 64, 67, 0.12);
+      }
+
+      .issue-card--resolved {
+        opacity: 0.55;
+        background: #f8f9fa;
+        border-style: dashed;
+      }
+
+      .issue-meta-row {
+        display: flex;
+        align-items: center;
+        gap: 6px;
+        margin-bottom: 10px;
+        flex-wrap: wrap;
+      }
+
+      .issue-pill {
+        font-size: 10px;
+        padding: 2px 8px;
+        border-radius: 10px;
+        background: #f1f3f4;
+        color: #5f6368;
+        font-weight: 500;
+        white-space: nowrap;
+        letter-spacing: 0.2px;
+      }
+
+      .issue-severity-badge {
+        font-size: 9px;
+        padding: 2px 7px;
+        border-radius: 8px;
+        font-weight: 600;
+        text-transform: uppercase;
+        letter-spacing: 0.4px;
+        white-space: nowrap;
+      }
+
+      .issue-severity-critical {
+        background: #fce8e6;
+        color: #c5221f;
+      }
+
+      .issue-severity-high {
+        background: #fef7e0;
+        color: #ea8600;
+      }
+
+      .issue-severity-medium {
+        background: #fff4e5;
+        color: #f9ab00;
+      }
+
+      .issue-severity-low {
+        background: #e8f0fe;
+        color: #1967d2;
+      }
+
+      .issue-title {
+        font-size: 13px;
+        font-weight: 500;
+        color: #202124;
+        line-height: 1.5;
+        margin-bottom: 10px;
+      }
+
+      .issue-description-container {
+        display: none;
+        margin-top: 10px;
+        padding-top: 10px;
+        border-top: 1px solid #f1f3f4;
+      }
+
+      .issue-description-container.expanded {
+        display: block;
+      }
+
+      .issue-description-full {
+        color: #5f6368;
+        line-height: 1.6;
+        font-size: 11px;
+        margin-bottom: 12px;
+      }
+
+      .issue-read-more {
+        margin-top: 8px;
+        background: none;
+        border: none;
+        color: #1a73e8;
+        font-size: 11px;
+        font-weight: 500;
+        cursor: pointer;
+        padding: 0;
+        text-align: left;
+        display: inline-flex;
+        align-items: center;
+        gap: 4px;
+        transition: color 0.2s ease;
+      }
+
+      .issue-read-more:hover {
+        color: #1557b0;
+      }
+
+      .issue-read-more-icon {
+        font-size: 9px;
+        transition: transform 0.25s ease;
+        display: inline-block;
+      }
+
+      .issue-read-more.expanded .issue-read-more-icon {
+        transform: rotate(180deg);
+      }
+
+      .issue-suggested-fix {
+        margin-top: 10px;
+        padding: 10px;
+        background: #f8f9fa;
+        border-radius: 6px;
+        border-left: 2px solid #0f9d58;
+      }
+
+      .issue-suggested-fix-label {
+        font-size: 9px;
+        font-weight: 600;
+        color: #0f9d58;
+        text-transform: uppercase;
+        letter-spacing: 0.5px;
+        margin-bottom: 6px;
+      }
+
+      .issue-suggested-fix-text {
+        font-size: 11px;
+        color: #5f6368;
+        line-height: 1.5;
+      }
+
+      .issue-actions {
+        display: flex;
+        gap: 6px;
+        margin-top: 12px;
+        padding-top: 10px;
+        border-top: 1px solid #f1f3f4;
+      }
+
+      .issue-btn {
+        flex: 1;
+        padding: 6px 12px;
+        font-size: 11px;
+        border-radius: 16px;
+        border: none;
+        cursor: pointer;
+        white-space: nowrap;
+        font-weight: 500;
+        transition: all 0.2s ease;
+      }
+
+      .issue-btn-fix {
+        background: #0f9d58;
+        color: #ffffff;
+      }
+
+      .issue-btn-fix:hover:not(:disabled) {
+        background: #0b7c43;
+      }
+
+      .issue-btn-ignore {
+        background: #ffffff;
+        color: #5f6368;
+        border: 1px solid #dadce0;
+      }
+
+      .issue-btn-ignore:hover:not(:disabled) {
+        background: #f8f9fa;
+        border-color: #bdc1c6;
+      }
+
+      .issue-btn-undo {
+        background: #ffffff;
+        color: #ea8600;
+        border: 1px solid #ea8600;
+      }
+
+      .issue-btn-undo:hover:not(:disabled) {
+        background: #fef7e0;
+        border-color: #d77600;
+      }
+
+      .issue-btn:disabled {
+        opacity: 0.5;
+        cursor: default;
+      }
+
+      .issue-status {
+        font-size: 10px;
+        color: #9aa0a6;
+        margin-top: 8px;
+        font-style: italic;
+      }
+    </style>
+  </head>
+  <body>
+    <div class="copilot-container">
+      <!-- Top bar: only options menu, title comes from Apps Script -->
+      <div class="top-bar">
+        <div class="menu-wrapper">
+          <button
+            type="button"
+            class="menu-button"
+            id="menu-button"
+            aria-label="More options"
+          >
+            <span class="menu-dots">⋮</span>
+          </button>
+          <div class="menu-dropdown" id="options-menu">
+            <button type="button" class="menu-item" data-action="clear-chat">
+              Clear chat
+            </button>
+            <button type="button" class="menu-item" data-action="quit">
+              Quit
+            </button>
+          </div>
+        </div>
+      </div>
+
+      <!-- Chat -->
+      <div id="chat" class="chat-window"></div>
+
+      <!-- Input -->
+      <form id="chat-form" class="input-row">
+        <textarea
+          id="user-input"
+          rows="3"
+          placeholder="Ask about this sheet, formulas, or issues…"
+        ></textarea>
+        <button id="send-btn" type="submit">Send</button>
+      </form>
+    </div>
+
+    <script>
+      (function () {
+        const chatEl = document.getElementById("chat");
+        const formEl = document.getElementById("chat-form");
+        const inputEl = document.getElementById("user-input");
+        const sendBtnEl = document.getElementById("send-btn");
+        const menuButtonEl = document.getElementById("menu-button");
+        const optionsMenuEl = document.getElementById("options-menu");
+
+        document.addEventListener("DOMContentLoaded", function () {
+          loadSpreadsheetInfo();
+        });
+
+        function loadSpreadsheetInfo() {
+          google.script.run
+            .withSuccessHandler(function (info) {
+              addGreeting(info);
+              scrollToBottom();
+            })
+            .withFailureHandler(function (err) {
+              addGreeting({
+                url: "Unable to get spreadsheet URL",
+                name: "Unknown",
+              });
+              scrollToBottom();
+            })
+            .getSpreadsheetInfo();
+        }
+
+        function addGreeting(spreadsheetInfo) {
+          const row = document.createElement("div");
+          row.className = "chat-row chat-row--bot";
+
+          const bubble = document.createElement("div");
+          bubble.className = "chat-bubble chat-bubble--bot";
+
+          // Create message parts
+          var parts = [
+            document.createTextNode("Hi, I'm your spreadSheet Mangler.\n\n"),
+          ];
+
+          // Spreadsheet name
+          var spreadsheetLabel = document.createElement("strong");
+          spreadsheetLabel.textContent = "📊 Spreadsheet: ";
+          parts.push(spreadsheetLabel);
+          parts.push(
+            document.createTextNode(
+              escapeHtml(spreadsheetInfo.name || "Unknown") + "\n"
+            )
+          );
+
+          // URL label
+          var urlLabel = document.createElement("strong");
+          urlLabel.textContent = "🔗 URL: ";
+          parts.push(urlLabel);
+
+          // URL link
+          var urlLink = document.createElement("a");
+          urlLink.href = spreadsheetInfo.url;
+          urlLink.target = "_blank";
+          urlLink.textContent = spreadsheetInfo.url;
+          urlLink.style.color = "#1a73e8";
+          urlLink.style.textDecoration = "underline";
+          urlLink.style.wordBreak = "break-all";
+          parts.push(urlLink);
+
+          // Closing message
+          parts.push(
+            document.createTextNode(
+              "\n\nTell me what you're thinking, and I'll analyze your sheet and show any issues here."
+            )
+          );
+
+          // Append all parts
+          parts.forEach(function (part) {
+            bubble.appendChild(part);
+          });
+
+          row.appendChild(bubble);
+          chatEl.appendChild(row);
+        }
+
+        /* --- Options menu --- */
+        menuButtonEl.addEventListener("click", function (e) {
+          e.stopPropagation();
+          optionsMenuEl.classList.toggle("menu-open");
+        });
+
+        document.addEventListener("click", function () {
+          optionsMenuEl.classList.remove("menu-open");
+        });
+
+        optionsMenuEl.addEventListener("click", function (e) {
+          const action =
+            e.target && e.target.dataset ? e.target.dataset.action : null;
+          if (!action) return;
+
+          e.stopPropagation();
+          optionsMenuEl.classList.remove("menu-open");
+
+          if (action === "clear-chat") {
+            chatEl.innerHTML = "";
+            addBotMessage("Chat cleared.");
+            scrollToBottom();
+          }
+
+          if (action === "quit") {
+            if (
+              google &&
+              google.script &&
+              google.script.host &&
+              google.script.host.close
+            ) {
+              google.script.host.close();
+            }
+          }
+        });
+
+        /* --- Chat submit --- */
+        formEl.addEventListener("submit", function (e) {
+          e.preventDefault();
+          const text = (inputEl.value || "").trim();
+          if (!text) return;
+
+          addUserMessage(text);
+          inputEl.value = "";
+          disableInput(true);
+          scrollToBottom();
+
+          google.script.run
+            .withSuccessHandler(function (response) {
+              if (response && response.reply) {
+                addBotMessage(response.reply);
+              }
+
+              if (
+                response &&
+                response.issues &&
+                response.issues.potential_errors &&
+                response.issues.potential_errors.length
+              ) {
+                addIssueCards(response.issues.potential_errors);
+              }
+
+              disableInput(false);
+              scrollToBottom();
+            })
+            .withFailureHandler(function (err) {
+              addBotMessage(
+                "Oops, something went wrong: " +
+                  (err && err.message ? err.message : err)
+              );
+              disableInput(false);
+              scrollToBottom();
+            })
+            .handleUserMessage(text);
+        });
+
+        /* --- Issue button handling --- */
+        chatEl.addEventListener("click", function (e) {
+          const target = e.target;
+
+          // Handle fix/ignore buttons
+          if (target.classList.contains("issue-btn")) {
+            handleIssueButton(e.target);
+            return;
+          }
+
+          // Handle undo button
+          if (target.classList.contains("issue-btn-undo")) {
+            handleUndoButton(e.target);
+            return;
+          }
+        });
+
+        function handleIssueButton(button) {
+          const card = button.closest(".issue-card");
+          if (!card || card.classList.contains("issue-card--resolved")) return;
+
+          const action = button.dataset.action;
+          const cellLocation = card.dataset.cellLocation;
+          const issueData = card.dataset.issueData
+            ? JSON.parse(card.dataset.issueData)
+            : null;
+          const buttons = card.querySelectorAll(".issue-btn");
+          const statusEl = card.querySelector(".issue-status");
+          const actionsEl = card.querySelector(".issue-actions");
+
+          buttons.forEach(function (btn) {
+            btn.disabled = true;
+          });
+          statusEl.textContent =
+            action === "fix" ? "Applying AI fix…" : "Ignoring…";
+
+          if (action === "fix") {
+            // Call AI to fix the issue
+            google.script.run
+              .withSuccessHandler(function (result) {
+                if (result && result.success) {
+                  card.classList.add("issue-card--resolved");
+                  statusEl.textContent = result.message || "Fixed with AI";
+
+                  // Add undo button
+                  actionsEl.innerHTML =
+                    '<button type="button" class="issue-btn issue-btn-undo" data-action="undo">' +
+                    "Undo Fix</button>";
+                } else {
+                  buttons.forEach(function (btn) {
+                    btn.disabled = false;
+                  });
+                  statusEl.textContent =
+                    result.message || "AI couldn't fix this issue";
+                }
+              })
+              .withFailureHandler(function (err) {
+                buttons.forEach(function (btn) {
+                  btn.disabled = false;
+                });
+                statusEl.textContent =
+                  "Error: " +
+                  (err && err.message ? err.message : "Failed to fix");
+              })
+              .fixIssueWithAI(issueData);
+          } else if (action === "ignore") {
+            // Just revert colors
+            google.script.run
+              .withSuccessHandler(function (result) {
+                card.classList.add("issue-card--resolved");
+                statusEl.textContent = "Ignored";
+              })
+              .withFailureHandler(function (err) {
+                buttons.forEach(function (btn) {
+                  btn.disabled = false;
+                });
+                statusEl.textContent =
+                  "Error: " +
+                  (err && err.message ? err.message : "Failed to ignore");
+              })
+              .ignoreIssue(cellLocation);
+          }
+        }
+
+        function handleUndoButton(button) {
+          const card = button.closest(".issue-card");
+          if (!card) return;
+
+          const cellLocation = card.dataset.cellLocation;
+          const statusEl = card.querySelector(".issue-status");
+
+          button.disabled = true;
+          statusEl.textContent = "Undoing…";
+
+          google.script.run
+            .withSuccessHandler(function (result) {
+              if (result && result.success) {
+                card.classList.remove("issue-card--resolved");
+                statusEl.textContent = "Fix undone";
+
+                // Restore original buttons
+                const actionsEl = card.querySelector(".issue-actions");
+                actionsEl.innerHTML =
+                  '<button type="button" class="issue-btn issue-btn-fix" data-action="fix">Fix with AI</button>' +
+                  '<button type="button" class="issue-btn issue-btn-ignore" data-action="ignore">Ignore</button>';
+              } else {
+                button.disabled = false;
+                statusEl.textContent =
+                  "Undo failed: " + (result.error || "Unknown error");
+              }
+            })
+            .withFailureHandler(function (err) {
+              button.disabled = false;
+              statusEl.textContent =
+                "Undo error: " +
+                (err && err.message ? err.message : "Unknown error");
+            })
+            .undoAIFix(cellLocation);
+        }
+
+        /* --- Chat rendering helpers --- */
+
+        function addUserMessage(text) {
+          const row = document.createElement("div");
+          row.className = "chat-row chat-row--user";
+
+          const bubble = document.createElement("div");
+          bubble.className = "chat-bubble chat-bubble--user";
+          bubble.innerHTML = escapeHtml(text);
+
+          row.appendChild(bubble);
+          chatEl.appendChild(row);
+        }
+
+        function addBotMessage(text) {
+          const row = document.createElement("div");
+          row.className = "chat-row chat-row--bot";
+
+          const bubble = document.createElement("div");
+          bubble.className = "chat-bubble chat-bubble--bot";
+          bubble.innerHTML = escapeHtml(text);
+
+          row.appendChild(bubble);
+          chatEl.appendChild(row);
+        }
+
+        function addIssueCards(issues) {
+          issues.forEach(function (issue, index) {
+            const row = document.createElement("div");
+            row.className = "chat-row chat-row--issue";
+
+            const card = document.createElement("div");
+            card.className = "issue-card";
+            card.dataset.cellLocation =
+              issue.cell_location || issue.range?.a1Notation || "";
+
+            // Store full issue data for AI fix
+            card.dataset.issueData = JSON.stringify({
+              cell_location:
+                issue.cell_location || issue.range?.a1Notation || "",
+              title: issue.title || issue.message || "Issue",
+              description: issue.description || "",
+              severity: issue.severity || "medium",
+              category: issue.category || "",
+              suggestedFix: issue.suggestedFix || "",
+            });
+
+            const safeTitle = escapeHtml(
+              issue.title || issue.message || "Issue"
+            );
+            const safeDescription = escapeHtml(issue.description || "");
+            const safeLocation = escapeHtml(
+              issue.cell_location || issue.range?.a1Notation || ""
+            );
+            const safeCategory = escapeHtml(issue.category || "");
+            const safeSeverity = (issue.severity || "medium").toLowerCase();
+            const safeSuggestedFix = escapeHtml(issue.suggestedFix || "");
+            const color = issue.color || "#f97316";
+
+            // Generate unique ID for this issue card
+            const cardId =
+              issue.issue_id || "issue-" + Date.now() + "-" + index;
+
+            // Set border color based on issue color
+            card.style.borderLeftColor = color;
+
+            // Build severity badge class
+            const severityClass = "issue-severity-" + safeSeverity;
+
+            // Only show read more if there's a description (different from title) or suggested fix
+            const hasDescription =
+              safeDescription &&
+              safeDescription.trim().length > 0 &&
+              safeDescription !== safeTitle;
+            const hasContentToShow = hasDescription || safeSuggestedFix;
+
+            card.innerHTML =
+              '<div class="issue-meta-row">' +
+              '<span class="issue-pill">' +
+              safeLocation +
+              "</span>" +
+              '<span class="issue-severity-badge ' +
+              severityClass +
+              '">' +
+              safeSeverity +
+              "</span>" +
+              "</div>" +
+              '<div class="issue-title">' +
+              safeTitle +
+              "</div>" +
+              (hasContentToShow
+                ? '<button type="button" class="issue-read-more" data-card-id="' +
+                  cardId +
+                  '">' +
+                  "<span>Show details</span>" +
+                  '<span class="issue-read-more-icon">▼</span>' +
+                  "</button>" +
+                  '<div class="issue-description-container" id="desc-container-' +
+                  cardId +
+                  '">' +
+                  (hasDescription
+                    ? '<div class="issue-description-full">' +
+                      safeDescription +
+                      "</div>"
+                    : "") +
+                  (safeSuggestedFix
+                    ? '<div class="issue-suggested-fix">' +
+                      '<div class="issue-suggested-fix-label">Suggested Fix</div>' +
+                      '<div class="issue-suggested-fix-text">' +
+                      safeSuggestedFix +
+                      "</div>" +
+                      "</div>"
+                    : "") +
+                  "</div>"
+                : "") +
+              '<div class="issue-actions">' +
+              '<button type="button" class="issue-btn issue-btn-fix" data-action="fix">Fix with AI</button>' +
+              '<button type="button" class="issue-btn issue-btn-ignore" data-action="ignore">Ignore</button>' +
+              "</div>" +
+              '<div class="issue-status">Pending</div>';
+
+            row.appendChild(card);
+            chatEl.appendChild(row);
+          });
+
+          // Add event listeners for "read more" buttons
+          chatEl.querySelectorAll(".issue-read-more").forEach(function (btn) {
+            btn.addEventListener("click", function () {
+              const cardId = btn.dataset.cardId;
+              const descContainer = document.getElementById(
+                "desc-container-" + cardId
+              );
+              if (descContainer) {
+                const isExpanded = descContainer.classList.contains("expanded");
+                if (isExpanded) {
+                  descContainer.classList.remove("expanded");
+                  btn.classList.remove("expanded");
+                  btn.querySelector("span:first-child").textContent =
+                    "Show details";
+                } else {
+                  descContainer.classList.add("expanded");
+                  btn.classList.add("expanded");
+                  btn.querySelector("span:first-child").textContent =
+                    "Hide details";
+                }
+              }
+            });
+          });
+        }
+
+        function scrollToBottom() {
+          chatEl.scrollTop = chatEl.scrollHeight;
+        }
+
+        function disableInput(disabled) {
+          inputEl.disabled = disabled;
+          sendBtnEl.disabled = disabled;
+        }
+
+        function escapeHtml(str) {
+          const div = document.createElement("div");
+          div.appendChild(document.createTextNode(String(str)));
+          return div.innerHTML;
+        }
+      })();
+    </script>
+  </body>
+</html>
