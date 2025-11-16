@@ -8,8 +8,8 @@ function onOpen() {
 
     var ui = SpreadsheetApp.getUi();
     if (ui) {
-      ui.createMenu("AI Copilot")
-        .addItem("Open Copilot", "showCopilotSidebar")
+      ui.createMenu("AI Mangler")
+        .addItem("Open Mangler", "showCopilotSidebar")
         .addToUi();
     }
   } catch (e) {
@@ -288,18 +288,35 @@ function callChatApi(userMessage, spreadsheetUrl, sheetTitle, sessionId) {
 }
 
 /**
- * Creates a fresh session ID for each sidebar opening.
- * Each time the sidebar is opened, a new conversation session starts.
- * This ensures conversations don't persist across sidebar reopenings.
+ * Gets or creates a session ID with time-based expiration.
+ * Sessions persist for 1 hour to maintain conversation context during active work,
+ * but automatically reset after inactivity to prevent infinite history buildup.
  * @param {string} spreadsheetId - The spreadsheet ID
  * @return {string} The session ID
  */
 function getOrCreateSessionId(spreadsheetId) {
-  // ALWAYS generate a fresh session ID - don't persist across sidebar openings
-  // This keeps each sidebar session isolated with its own conversation history
-  var sessionId = "session_" + spreadsheetId + "_" + Date.now() + "_" + Math.random().toString(36).substr(2, 9);
+  var properties = PropertiesService.getScriptProperties();
+  var sessionKey = "sessionId_" + spreadsheetId;
+  var timestampKey = "sessionTimestamp_" + spreadsheetId;
 
-  Logger.log("Created fresh session ID: " + sessionId);
+  var sessionId = properties.getProperty(sessionKey);
+  var timestamp = properties.getProperty(timestampKey);
+
+  var now = Date.now();
+  var SESSION_TIMEOUT = 60 * 60 * 1000; // 1 hour in milliseconds
+
+  // Create new session if: no session exists OR session is older than 1 hour
+  if (!sessionId || !timestamp || (now - parseInt(timestamp)) > SESSION_TIMEOUT) {
+    sessionId = "session_" + spreadsheetId + "_" + now + "_" + Math.random().toString(36).substr(2, 9);
+    properties.setProperty(sessionKey, sessionId);
+    properties.setProperty(timestampKey, now.toString());
+    Logger.log("Created new session (timeout/first-time): " + sessionId);
+  } else {
+    // Update timestamp to extend session
+    properties.setProperty(timestampKey, now.toString());
+    Logger.log("Reusing existing session: " + sessionId);
+  }
+
   return sessionId;
 }
 
