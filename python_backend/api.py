@@ -12,6 +12,8 @@ import urllib.request
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
+from importlib import resources
+
 from fastapi import FastAPI, HTTPException, Request, Response
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
@@ -98,6 +100,55 @@ app.add_middleware(
 )
 
 _sheets_service = None
+
+
+def _load_app_script_asset(filename: str) -> str:
+    """
+    Locate and load an Apps Script asset bundled with the backend.
+
+    Looks in the following locations (in order):
+    1. APP_SCRIPT_DIR environment variable (when explicitly configured)
+    2. python_backend/app_script directory (when running from source)
+    3. <repo root>/app_script or <repo root>/app-script (legacy locations)
+    4. Package resources (when the backend is installed as a package)
+    """
+    backend_root = Path(__file__).resolve().parent
+    env_dir = os.environ.get("APP_SCRIPT_DIR")
+
+    candidate_dirs = []
+    if env_dir:
+        candidate_dirs.append(Path(env_dir))
+
+    candidate_dirs.extend([
+        backend_root / "app_script",
+        backend_root.parent / "app_script",
+        backend_root.parent / "app-script",
+        Path.cwd() / "app_script",
+        Path.cwd() / "app-script",
+    ])
+
+    checked_paths = []
+    for directory in candidate_dirs:
+        if not directory:
+            continue
+        candidate = directory / filename
+        checked_paths.append(str(candidate))
+        if candidate.is_file():
+            return candidate.read_text(encoding="utf-8")
+
+    # Fallback to package resources if available (e.g., when zipped or installed)
+    try:
+        asset_files = resources.files("python_backend.app_script")
+        with asset_files.joinpath(filename).open("r", encoding="utf-8") as handle:
+            return handle.read()
+    except (FileNotFoundError, ModuleNotFoundError, AttributeError):
+        pass
+
+    search_list = "; ".join(checked_paths) or "No candidate paths were inspected"
+    raise FileNotFoundError(
+        f"Unable to locate {filename}. Checked: {search_list}. "
+        "Set APP_SCRIPT_DIR to point to the directory containing Code.gs and Sidebar.html."
+    )
 
 
 class _SheetsServiceWrapper:
@@ -1830,23 +1881,11 @@ async def install_extension(request: InstallExtensionRequest) -> Dict[str, Any]:
         from .apps_script_installer import AppsScriptInstaller
 
         # Load the extension files
-        backend_root = Path(__file__).resolve().parent
-        app_script_dir = backend_root.parent / "app-script"
-
-        code_gs_path = app_script_dir / "Code.gs"
-        sidebar_html_path = app_script_dir / "Sidebar.html"
-
-        if not code_gs_path.exists() or not sidebar_html_path.exists():
-            raise HTTPException(
-                status_code=500,
-                detail="Extension files not found. Please ensure Code.gs and Sidebar.html exist in app-script directory."
-            )
-
-        with open(code_gs_path, "r") as f:
-            code_gs_content = f.read()
-
-        with open(sidebar_html_path, "r") as f:
-            sidebar_html_content = f.read()
+        try:
+            code_gs_content = _load_app_script_asset("Code.gs")
+            sidebar_html_content = _load_app_script_asset("Sidebar.html")
+        except FileNotFoundError as exc:
+            raise HTTPException(status_code=500, detail=str(exc)) from exc
 
         # Install the extension
         installer = AppsScriptInstaller()

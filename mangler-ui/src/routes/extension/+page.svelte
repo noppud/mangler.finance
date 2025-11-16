@@ -5,6 +5,14 @@
 	const SERVICE_ACCOUNT_EMAIL =
 		'googlesheetworker@fintech-hackathon-478313.iam.gserviceaccount.com';
 
+	type AccessInfo = {
+		hasAccess: boolean;
+		name?: string;
+		spreadsheetId?: string;
+		serviceAccountEmail?: string;
+		owners?: { emailAddress?: string; displayName?: string }[];
+	};
+
 	let step = $state<'input' | 'check-access' | 'installing' | 'success' | 'error'>('input');
 	let spreadsheetUrl = $state('');
 	let spreadsheetId = $state('');
@@ -13,6 +21,8 @@
 	let successMessage = $state('');
 	let spreadsheetName = $state('');
 	let scriptId = $state('');
+	let lastAccessResult = $state<AccessInfo | null>(null);
+	let installFailed = $state(false);
 
 	function extractSpreadsheetId(url: string): string | null {
 		// Extract ID from URL like: https://docs.google.com/spreadsheets/d/1abc.../edit
@@ -22,6 +32,8 @@
 
 	async function handleNext() {
 		errorMessage = '';
+		lastAccessResult = null;
+		installFailed = false;
 
 		// Extract spreadsheet ID from URL
 		const id = extractSpreadsheetId(spreadsheetUrl);
@@ -44,10 +56,12 @@
 			const result = await response.json();
 
 			if (result.hasAccess) {
+				lastAccessResult = result;
 				spreadsheetName = result.name || 'Unknown Spreadsheet';
 				// Auto-proceed to installation
 				await installExtension();
 			} else {
+				lastAccessResult = result;
 				errorMessage = `Service account doesn't have access yet. Please share the sheet with: ${serviceAccountEmail}`;
 				step = 'error';
 			}
@@ -60,6 +74,7 @@
 	async function installExtension() {
 		step = 'installing';
 		errorMessage = '';
+		installFailed = false;
 
 		try {
 			const response = await fetch(`${BACKEND_URL}/extension/install`, {
@@ -78,10 +93,12 @@
 				successMessage = result.message || 'Extension installed successfully!';
 				step = 'success';
 			} else {
+				installFailed = true;
 				errorMessage = result.message || result.error || 'Installation failed';
 				step = 'error';
 			}
 		} catch (err: any) {
+			installFailed = true;
 			errorMessage = `Installation failed: ${err.message || err}`;
 			step = 'error';
 		}
@@ -95,6 +112,8 @@
 		successMessage = '';
 		spreadsheetName = '';
 		scriptId = '';
+		lastAccessResult = null;
+		installFailed = false;
 	}
 
 	function copyEmail() {
@@ -221,9 +240,26 @@
 		<!-- Error -->
 		{#if step === 'error'}
 			<div class="card error-card">
-				<div class="error-icon">❌</div>
+				<div class="error-icon" aria-hidden="true">
+					<span class="error-cross"></span>
+				</div>
 				<h2>Installation Failed</h2>
 				<p class="error-message">{errorMessage}</p>
+
+				{#if lastAccessResult?.hasAccess}
+					<div class="status-stack">
+						<div class="status-row status-pass">
+							<span>Access Check</span>
+							<span>Passed</span>
+						</div>
+						{#if installFailed}
+							<div class="status-row status-fail">
+								<span>Script Installation</span>
+								<span>Failed</span>
+							</div>
+						{/if}
+					</div>
+				{/if}
 
 				<div class="error-help">
 					<h3>Troubleshooting:</h3>
@@ -449,10 +485,48 @@
 		text-align: center;
 	}
 
-	.success-icon,
-	.error-icon {
+	.success-icon {
 		font-size: 4rem;
 		margin-bottom: 1rem;
+	}
+
+	.error-icon {
+		width: 96px;
+		height: 96px;
+		border-radius: 50%;
+		background: rgba(148, 163, 184, 0.15);
+		display: flex;
+		align-items: center;
+		justify-content: center;
+		margin: 0 auto 1rem;
+	}
+
+	.error-cross {
+		position: relative;
+		display: block;
+		width: 44px;
+		height: 44px;
+	}
+
+	.error-cross::before,
+	.error-cross::after {
+		content: '';
+		position: absolute;
+		top: 50%;
+		left: 50%;
+		width: 44px;
+		height: 4px;
+		background: #cbd5f5;
+		border-radius: 999px;
+		transform-origin: center;
+	}
+
+	.error-cross::before {
+		transform: translate(-50%, -50%) rotate(45deg);
+	}
+
+	.error-cross::after {
+		transform: translate(-50%, -50%) rotate(-45deg);
 	}
 
 	.success-message,
@@ -460,6 +534,34 @@
 		color: #94a3b8;
 		font-size: 1.1rem;
 		margin-bottom: 2rem;
+	}
+
+	.status-stack {
+		margin-bottom: 2rem;
+		text-align: left;
+		display: flex;
+		flex-direction: column;
+		gap: 0.75rem;
+	}
+
+	.status-row {
+		display: flex;
+		align-items: center;
+		justify-content: space-between;
+		border-radius: 0.75rem;
+		padding: 0.75rem 1rem;
+		font-weight: 500;
+		border: 1px solid rgba(148, 163, 184, 0.2);
+	}
+
+	.status-pass {
+		background: rgba(34, 197, 94, 0.08);
+		color: #4ade80;
+	}
+
+	.status-fail {
+		background: rgba(248, 113, 113, 0.08);
+		color: #fca5a5;
 	}
 
 	.success-details {
